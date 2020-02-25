@@ -24,7 +24,8 @@ from architecture import deeplab_xception
 from PIL import Image
 
 #DDP
-from torch.nn.parallel import DistributedDataParallel as DDP
+from apex import amp
+from apex.parallel import DistributedDataParallel as DDP
 from utils import comm
 
 
@@ -113,11 +114,14 @@ def main(pargs):
     # Define architecture
     n_input_channels = len(pargs.channels)
     n_output_channels = 3
-    net = deeplab_xception.DeepLabv3_plus(nInputChannels = n_input_channels, n_output = n_output_channels, os=16, pretrained=False)
+    net = deeplab_xception.DeepLabv3_plus(n_input = n_input_channels, 
+                                          n_classes = n_output_channels, 
+                                          os=16, pretrained=False, 
+                                          rank = comm_rank)
 
     #select loss
     loss_pow = pargs.loss_pow
-    #some magix numbers
+    #some magic numbers
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
     fpw_1 = 2.61461122397522257612
     fpw_2 = 1.71641974795896018744
@@ -126,12 +130,18 @@ def main(pargs):
     #select optimizer
     optimizer = None
     if pargs.optimizer == "Adam":
-        optimizer = optim.Adam(net.parameters(), lr=pargs.start_lr, eps=pargs.adam_eps, weight_decay=pargs.weight_decay)
+        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     else:
         raise ValueError("Error, optimizer {} not supported".format(pargs.optimizer))
 
+    #wrap model and opt into amp
+    net, optimizer = amp.initialize(net, optimizer, opt_level = pargs.amp_opt_level)
+    
+    #make model distributed
+    net = DDP(net, device_ids=[device])
+
     #restart from checkpoint if desired
-    if (hvd.rank() == 0) and (pargs.checkpoint):
+    if (comm_rank == 0) and (pargs.checkpoint):
         checkpoint = torch.load(pargs.checkpoint, map_location = device)
         start_step = checkpoint['step']
         start_epoch = checkpoint['epoch']
@@ -147,22 +157,15 @@ def main(pargs):
         
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False)
-    hvd.broadcast(steptens, root_rank = 0)
+    torch.distributed.broadcast(steptens, src = 0)
+    
+    #broadcast model and optimizer state
     hvd.broadcast_parameters(net.state_dict(), root_rank = 0)
     hvd.broadcast_optimizer_state(optimizer, root_rank = 0)
-    if pargs.enable_fp16:
-        net.half()
-    net.to(device)
 
     #unpack the bcasted tensor
     start_step = steptens.numpy()[0]
     start_epoch = steptens.numpy()[1]
-    
-    #wrap the optimizer
-    optimizer = hvd.DistributedOptimizer(optimizer,
-                                         named_parameters=net.named_parameters(),
-                                         compression = hvd.Compression.none,
-                                         op = hvd.Average)
 
     # Set up the data feeder
     # train
@@ -184,8 +187,9 @@ def main(pargs):
     validation_loader = DataLoader(validation_set, local_batch_size, num_workers=min([max_inter_threads, local_batch_size]), drop_last=True)
         
     # Train network
-    if (pargs.logging_frequency > 0) and (hvd.rank() == 0):
-        wandb.watch(net)
+    #if (pargs.logging_frequency > 0) and (comm_rank == 0):
+    #    wandb.watch(net)
+    
     printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
     step = start_step
     epoch = start_epoch
@@ -194,7 +198,6 @@ def main(pargs):
     while True:
         
         printr('{:14.4f} REPORT: starting epoch {}'.format(dt.datetime.now().timestamp(), epoch), 0)
-        mse_list = []
         
         #for inputs_raw, labels, source in train_loader:
         for inputs, label, filename in train_loader:
@@ -207,11 +210,12 @@ def main(pargs):
             
             # Compute score
             predictions = torch.max(outputs, 1)[1]
-            local_iou = utils.get_iou(predictions, labels, n_classes=3) #/ local_batch_size
+            local_iou = utils.get_iou(predictions, label, n_classes=3) #/ local_batch_size
             
             # Backprop
             optimizer.zero_grad()
-            loss.backward()
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
             optimizer.step()
 
             #step counter
@@ -222,7 +226,7 @@ def main(pargs):
                 scheduler.step()
 
             #print some metrics
-            printr('{:14.4f} REPORT training: step {} loss {} LR {}'.format(dt.datetime.now().timestamp(), step, loss_avg, current_lr), 0)
+            printr('{:14.4f} REPORT training: step {} loss {} LR {}'.format(dt.datetime.now().timestamp(), step, loss[0], current_lr), 0)
 
             ##visualize if requested
             #if (step % pargs.visualization_frequency == 0) and (hvd.rank() == 0):
@@ -248,40 +252,29 @@ def main(pargs):
                 #eval
                 net.eval()
                 
-                # vali loss
-                mse_list_val = []
-
                 # disable gradients
                 with torch.no_grad():
                 
                     # iterate over validation sample
-                    for inputs_raw_val, label_val, inputs_info_val, label_info_val in validation_loader:
+                    for inputs_val, label_val, filename_val in validation_loader:
 
-                        # generate random sample: format of input data is NHWC 
-                        if pargs.noise_dimensions > 0:
-                            ishape_val = inputs_raw_val.shape
-                            inputs_noise_val = udist.rsample( (ishape_val[0], pargs.noise_dimensions, ishape_val[2], ishape_val[3]) ).to(device)
-
-                            # concat tensors
-                            inputs_val = torch.cat([inputs_raw_val, inputs_noise_val], dim=1)
-                        else:
-                            inputs_val = inputs_raw_val
-                    
                         # forward pass
                         outputs_val = net.forward(inputs_val)
 
                         # Compute loss and average across nodes
-                        loss_val = criterion(outputs_val, label_val)
+                        loss_val = criterion(outputs_val, label_val, weight=class_weights)
 
-                        # append to list
-                        mse_list_val.append(loss_val)
+                        # Compute score
+                        predictions_val = torch.max(outputs_val, 1)[1]
+                        local_iou_val = utils.get_iou(predictions_val, label_val, n_classes=3)
+                        
 
                 # average the validation loss
-                count_val = float(len(mse_list_val))
-                count_val_global = metric_average(count_val, "val_count", op=hvd.Sum)
-                loss_val = sum(mse_list_val)
-                loss_val_global = metric_average(loss_val, "val_loss", op=hvd.Sum)
-                loss_val_avg = loss_val_global / count_val_global
+                #count_val = float(len(mse_list_val))
+                #count_val_global = metric_average(count_val, "val_count", op=hvd.Sum)
+                #loss_val = sum(mse_list_val)
+                #loss_val_global = metric_average(loss_val, "val_loss", op=hvd.Sum)
+                #loss_val_avg = loss_val_global / count_val_global
                 
                 # print results
                 printr('{:14.4f} REPORT validation: step {} loss {}'.format(dt.datetime.now().timestamp(), step, loss_val_avg), 0)
@@ -350,9 +343,8 @@ if __name__ == "__main__":
     AP.add_argument("--lr_decay_patience", type=int, default=3, help="Minimum number of steps used to wait before decreasing LR")
     AP.add_argument("--lr_decay_rate", type=float, default=0.25, help="LR decay factor")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
-    AP.add_argument("--disable_gds", action='store_true')
-    AP.add_argument("--enable_fp16", action='store_true')
-    AP.add_argument("--resume_logging", action='store_true')
+    AP.add_argument("--amp_opt_level", tyope=str, default="O0", help="AMP optimization level")
+    #AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
 
     #run the stuff

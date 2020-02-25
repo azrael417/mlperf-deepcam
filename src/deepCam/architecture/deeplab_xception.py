@@ -291,16 +291,18 @@ class ASPP_module(nn.Module):
 
 
 class DeepLabv3_plus(nn.Module):
-    def __init__(self, nInputChannels=3, n_classes=21, os=16, pretrained=False, _print=True):
-        if _print:
+    def __init__(self, n_input = 3, n_classes = 21, os = 16, pretrained = False, _print = True, rank = 0):
+        if _print and (rank == 0):
             print("Constructing DeepLabv3+ model...")
             print("Number of classes: {}".format(n_classes))
             print("Output stride: {}".format(os))
-            print("Number of Input Channels: {}".format(nInputChannels))
+            print("Number of Input Channels: {}".format(n_input))
+        
+        #superclass init
         super(DeepLabv3_plus, self).__init__()
 
         # Atrous Conv
-        self.xception_features = Xception(nInputChannels, os, pretrained)
+        self.xception_features = Xception(n_input, os, pretrained)
 
         # ASPP
         if os == 16:
