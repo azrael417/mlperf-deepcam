@@ -213,9 +213,13 @@ def main(pargs):
             # Compute loss and average across nodes
             loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
             
+            print(loss)
+            
             # Compute score
             predictions = torch.max(outputs, 1)[1]
             local_iou = utils.get_iou(predictions, label, n_classes=3) #/ local_batch_size
+            
+            print(local_iou)
             
             # Backprop
             optimizer.zero_grad()

@@ -4,6 +4,7 @@ from torch import nn
 import numpy as np
 
 def fp_loss(logit, target, weight, fpw_1=0, fpw_2=0):
+    
     n, c, h, w = logit.size()
     # logit = logit.permute(0, 2, 3, 1)
     target = target.squeeze(1)
