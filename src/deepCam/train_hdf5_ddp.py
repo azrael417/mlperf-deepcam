@@ -48,7 +48,8 @@ def printr(msg, rank=0):
 def main(pargs):
 
     #init DDP
-    torch.distributed.init_process_group(backend="nccl")
+    #torch.distributed.init_process_group(backend="nccl")
+    torch.distributed.init_process_group(backend="mpi")
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
@@ -174,7 +175,9 @@ def main(pargs):
                                statsfile = os.path.join(train_dir, 'stats.h5'),
                                channels = pargs.channels,
                                shuffle = True, 
-                               preprocess = True)
+                               preprocess = True,
+                               comm_size = comm_size,
+                               comm_rank = comm_rank)
     train_loader = DataLoader(train_set, local_batch_size, num_workers=min([max_inter_threads, local_batch_size]), drop_last=True)
     
     # validation
@@ -183,7 +186,9 @@ def main(pargs):
                                statsfile = os.path.join(train_dir, 'stats.h5'),
                                channels = pargs.channels,
                                shuffle = False, 
-                               preprocess = True)
+                               preprocess = True,
+                               comm_size = comm_size,
+                               comm_rank = comm_rank)
     validation_loader = DataLoader(validation_set, local_batch_size, num_workers=min([max_inter_threads, local_batch_size]), drop_last=True)
         
     # Train network
@@ -324,7 +329,6 @@ if __name__ == "__main__":
     AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")
     AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
     AP.add_argument("--data_dir_prefix", type=str, default='/', help="prefix to data dir")
-    AP.add_argument("--num_raid", type=int, default=4, choices=[4, 8], help="Number of available raid drives")
     AP.add_argument("--max_inter_threads", type=int, default=1, help="Maximum number of concurrent readers")
     #AP.add_argument("--max_intra_threads", type=int, default=8, help="Maximum degree of parallelism within reader")
     AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
