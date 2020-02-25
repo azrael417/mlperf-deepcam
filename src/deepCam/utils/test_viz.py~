@@ -1,0 +1,20 @@
+import numpy as np
+import h5py as h5
+
+import visualizer as vizc
+
+vizz = vizc.CamVisualizer()
+
+with h5.File('/data/viz/hdf5/data-2003-11-08-06-1.h5', 'r') as f:
+    data = f["climate"]["data"][...,0]
+    label = f["climate"]["label_0"][...]
+
+
+vizz.plot("/data/output/hdf5/data-2003-11-08-06-1_test",
+          "Predicted",
+          data,
+          label,
+          year="2003",
+          month="11",
+          day="08",
+          hour="06")
