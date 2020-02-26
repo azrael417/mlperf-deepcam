@@ -1,6 +1,8 @@
 import os
+import sys
 import numpy as np
 import h5py as h5
+from mpi4py import MPI
 
 #merge function helper
 def merge_token(token1, token2):
@@ -56,21 +58,47 @@ overwrite = False
 data_format = "nhwc"
 data_path_prefix = "/data"
 
+#MPI
+comm = MPI.COMM_WORLD.Dup()
+comm_rank = comm.rank
+comm_size = comm.size
+
+
 #root path
 root = os.path.join( data_path_prefix, "train" )
-            
-files = [ os.path.join(root, x)  for x in os.listdir(root) \
-                  if x.endswith('.h5') and x.startswith('data-') ]
+
+#get files
+allfiles = [ os.path.join(root, x)  for x in os.listdir(root) \
+              if x.endswith('.h5') and x.startswith('data-') ]
+
+#split list
+numfiles = len(allfiles)
+chunksize = int(np.ceil(numfiles / comm_size))
+start = chunksize * comm_rank
+end = min([start + chunksize, numfiles])
+files = allfiles[start:end]
 
 #get first token and then merge recursively
 token = create_token(files[0], data_format)
 for filename in files[1:]:
     token = merge_token(create_token(filename, data_format), token)
 
-#save the stuff
-with h5.File(os.path.join(data_path_prefix, "stats.h5"), "w") as f:
-    f["climate/count"]=token[0]
-    f["climate/mean"]=token[1]
-    f["climate/sqmean"]=token[2]
-    f["climate/minval"]=token[3]
-    f["climate/maxval"]=token[4]
+#communicate results
+alltoken = comm.gather(token, 0)
+
+if comm_rank == 0:
+    #merge the remaining token
+    token = alltoken[0]
+    for token2 in alltoken[1:]:
+        token = merge_token(token, token2)
+
+    #save the stuff
+    with h5.File(os.path.join(data_path_prefix, "stats.h5"), "w") as f:
+        f["climate/count"]=token[0]
+        f["climate/mean"]=token[1]
+        f["climate/sqmean"]=token[2]
+        f["climate/minval"]=token[3]
+        f["climate/maxval"]=token[4]
+        
+#wait for rank 0 to complete
+mpi.barrier()

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #login
-#docker login gitlab-master.nvidia.com:5005
+#docker login -u tkurth gitlab-master.nvidia.com:5005
 
 #nvidia-docker build -t tkurth/pytorch-bias_gan:latest .
 nvidia-docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug .
