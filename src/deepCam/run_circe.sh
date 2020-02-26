@@ -1,14 +1,18 @@
 #!/bin/bash
 #SBATCH -A hpc
-#SBATCH --mpi=pmix
-#SBATCH --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro
-#SBATCH --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug
-#SBATCH --container-workdir "/opt/deepCam"
+#SBATCH -J train_cam5
+#SBATCH -t 01:00:00
 
+#ranks per node
 rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
-srun -N ${SLURM_NNODES} -n ${totalranks} python train_hdf5_ddp.py \
+#run training
+srun --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} \
+     --container-workdir /opt/deepCam \
+     --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro \
+     --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
+     python train_hdf5_ddp.py \
        --wireup_method "slurm" \
        --run_tag ${run_tag} \
        --data_dir_prefix ${data_dir_prefix} \
