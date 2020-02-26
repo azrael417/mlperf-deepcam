@@ -102,6 +102,4 @@ if comm_rank == 0:
         f["climate/sqmean"]=token[2]
         f["climate/minval"]=token[3]
         f["climate/maxval"]=token[4]
-        
-#wait for rank 0 to complete
-comm.barrier()
+
