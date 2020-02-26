@@ -1,6 +1,6 @@
 # Basics
 import os
-import wandb
+#import wandb
 import numpy as np
 import argparse as ap
 import datetime as dt
@@ -24,6 +24,7 @@ from architecture import deeplab_xception
 from PIL import Image
 
 #DDP
+import torch.distributed as dist
 from apex import amp
 from apex.parallel import DistributedDataParallel as DDP
 from utils import comm
@@ -46,10 +47,22 @@ def printr(msg, rank=0):
 
 #main function
 def main(pargs):
-
+    
+    #get master address and port
+    addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
+    #use that URI
+    address = addrport.split(":")[0]
+    #use the port but add 1
+    port = addrport.split(":")[1]
+    port = str(int(port)+1)
+    os.environ["MASTER_ADDR"] = address
+    os.environ["MASTER_PORT"] = port
+    
     #init DDP
-    #torch.distributed.init_process_group(backend="nccl")
-    torch.distributed.init_process_group(backend="mpi")
+    dist.init_process_group(backend = "nccl", 
+                            rank = os.getenv('OMPI_COMM_WORLD_RANK',0),
+                            world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0))
+    #torch.distributed.init_process_group(backend="mpi")
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
@@ -63,15 +76,14 @@ def main(pargs):
         printr("Using GPUs",0)
         device = torch.device("cuda", comm_local_rank)
         torch.cuda.manual_seed(seed)
+        #necessary for AMP to work
+        torch.cuda.set_device(device)
     else:
         printr("Using CPUs",0)
         device = torch.device("cpu")
-
+    
     #set up directories
-    fac = 2 if pargs.num_raid == 4 else 1
-    mod = 4 if pargs.num_raid == 4 else 2
-    root_dir = os.path.join(pargs.data_dir_prefix, "data{}".format( fac * (comm_local_rank // mod) + 1 ), \
-                            "ecmwf_data", "gpu{}".format( comm_local_rank ))
+    root_dir = os.path.join(pargs.data_dir_prefix)
     output_dir = pargs.output_dir
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
@@ -119,6 +131,7 @@ def main(pargs):
                                           n_classes = n_output_channels, 
                                           os=16, pretrained=False, 
                                           rank = comm_rank)
+    net.to(device)
 
     #select loss
     loss_pow = pargs.loss_pow
@@ -139,7 +152,7 @@ def main(pargs):
     net, optimizer = amp.initialize(net, optimizer, opt_level = pargs.amp_opt_level)
     
     #make model distributed
-    net = DDP(net, device_ids=[device])
+    net = DDP(net)
 
     #restart from checkpoint if desired
     if (comm_rank == 0) and (pargs.checkpoint):
@@ -148,6 +161,7 @@ def main(pargs):
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer'])
         net.load_state_dict(checkpoint['model'])
+        amp.load_state_dict(checkpoint['amp'])
     else:
         start_step = 0
         start_epoch = 0
@@ -157,39 +171,39 @@ def main(pargs):
         scheduler = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
         
     #broadcast model and optimizer state
-    steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False)
-    torch.distributed.broadcast(steptens, src = 0)
+    steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
+    dist.broadcast(steptens, src = 0)
     
-    #broadcast model and optimizer state
-    hvd.broadcast_parameters(net.state_dict(), root_rank = 0)
-    hvd.broadcast_optimizer_state(optimizer, root_rank = 0)
+    ##broadcast model and optimizer state
+    #hvd.broadcast_parameters(net.state_dict(), root_rank = 0)
+    #hvd.broadcast_optimizer_state(optimizer, root_rank = 0)
 
     #unpack the bcasted tensor
-    start_step = steptens.numpy()[0]
-    start_epoch = steptens.numpy()[1]
+    start_step = steptens.cpu().numpy()[0]
+    start_epoch = steptens.cpu().numpy()[1]
 
     # Set up the data feeder
     # train
     train_dir = os.path.join(root_dir, "train")
     train_set = cam.CamDataset(train_dir, 
-                               statsfile = os.path.join(train_dir, 'stats.h5'),
+                               statsfile = os.path.join(root_dir, 'stats.h5'),
                                channels = pargs.channels,
                                shuffle = True, 
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    train_loader = DataLoader(train_set, local_batch_size, num_workers=min([max_inter_threads, local_batch_size]), drop_last=True)
+    train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
     
     # validation
     validation_dir = os.path.join(root_dir, "validation")
     validation_set = cam.CamDataset(validation_dir, 
-                               statsfile = os.path.join(train_dir, 'stats.h5'),
+                               statsfile = os.path.join(root_dir, 'stats.h5'),
                                channels = pargs.channels,
                                shuffle = False, 
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    validation_loader = DataLoader(validation_set, local_batch_size, num_workers=min([max_inter_threads, local_batch_size]), drop_last=True)
+    validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
         
     # Train network
     #if (pargs.logging_frequency > 0) and (comm_rank == 0):
@@ -206,18 +220,24 @@ def main(pargs):
         
         #for inputs_raw, labels, source in train_loader:
         for inputs, label, filename in train_loader:
-
+            
+            #send to device
+            inputs = inputs.to(device)
+            label = label.to(device)
+            
             # forward pass
             outputs = net.forward(inputs)
             
             # Compute loss and average across nodes
             loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
             
-            print(loss)
+            # allreduce for loss
+            loss_avg = loss.detach()
+            dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
             
             # Compute score
             predictions = torch.max(outputs, 1)[1]
-            local_iou = utils.get_iou(predictions, label, n_classes=3) #/ local_batch_size
+            local_iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
             
             print(local_iou)
             
@@ -235,7 +255,7 @@ def main(pargs):
                 scheduler.step()
 
             #print some metrics
-            printr('{:14.4f} REPORT training: step {} loss {} LR {}'.format(dt.datetime.now().timestamp(), step, loss[0], current_lr), 0)
+            printr('{:14.4f} REPORT training: step {} loss {} LR {}'.format(dt.datetime.now().timestamp(), step, loss_avg.item() / float(comm_size), current_lr), 0)
 
             ##visualize if requested
             #if (step % pargs.visualization_frequency == 0) and (hvd.rank() == 0):
@@ -261,32 +281,40 @@ def main(pargs):
                 #eval
                 net.eval()
                 
+                count_sum_val = torch.Tensor([0.]).to(device)
+                loss_sum_val = torch.Tensor([0.]).to(device)
+                
                 # disable gradients
                 with torch.no_grad():
                 
                     # iterate over validation sample
                     for inputs_val, label_val, filename_val in validation_loader:
-
+                        
+                        #send to device
+                        inputs_val = inputs_val.to(device)
+                        label_val = label_val.to(device)
+                        
                         # forward pass
                         outputs_val = net.forward(inputs_val)
 
                         # Compute loss and average across nodes
                         loss_val = criterion(outputs_val, label_val, weight=class_weights)
-
-                        # Compute score
-                        predictions_val = torch.max(outputs_val, 1)[1]
-                        local_iou_val = utils.get_iou(predictions_val, label_val, n_classes=3)
+                        loss_sum_val += loss_val
                         
-
+                        #increase counter
+                        count_sum_val += 1.
+                        
+                        ## Compute score
+                        #predictions_val = torch.max(outputs_val, 1)[1]
+                        #local_iou_val = utils.get_iou(predictions_val, label_val, n_classes=3)
+                        
                 # average the validation loss
-                #count_val = float(len(mse_list_val))
-                #count_val_global = metric_average(count_val, "val_count", op=hvd.Sum)
-                #loss_val = sum(mse_list_val)
-                #loss_val_global = metric_average(loss_val, "val_loss", op=hvd.Sum)
-                #loss_val_avg = loss_val_global / count_val_global
+                dist.reduce(count_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                loss_avg_val = loss_sum_val.item() / count_sum_val.item()
                 
                 # print results
-                printr('{:14.4f} REPORT validation: step {} loss {}'.format(dt.datetime.now().timestamp(), step, loss_val_avg), 0)
+                printr('{:14.4f} REPORT validation: step {} loss {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val), 0)
 
                 ## log in wandb
                 #if (pargs.logging_frequency > 0) and (hvd.rank() == 0):
@@ -301,7 +329,8 @@ def main(pargs):
                     'step': step,
                     'epoch': epoch,
                     'model': net.state_dict(),
-                    'optimizer': optimizer.state_dict()
+                    'optimizer': optimizer.state_dict(),
+                    'amp': amp.state_dict()
 		        }
                 torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
 
@@ -314,7 +343,8 @@ def main(pargs):
                 'step': step,
                 'epoch': epoch,
                 'model': net.state_dict(),
-                'optimizer': optimizer.state_dict()
+                'optimizer': optimizer.state_dict(),
+                'amp': amp.state_dict()
             }
             torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_epoch_" + str(epoch) + ".cpt") )
 
@@ -351,7 +381,7 @@ if __name__ == "__main__":
     AP.add_argument("--lr_decay_patience", type=int, default=3, help="Minimum number of steps used to wait before decreasing LR")
     AP.add_argument("--lr_decay_rate", type=float, default=0.25, help="LR decay factor")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
-    AP.add_argument("--amp_opt_level", tyope=str, default="O0", help="AMP optimization level")
+    AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
     #AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
 

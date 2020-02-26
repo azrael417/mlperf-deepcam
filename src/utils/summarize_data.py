@@ -20,8 +20,8 @@ def merge_token(token1, token2):
 
     #create new token
     nres = n1 + n2
-    dmeanres = (n1/nres)*dmean1 + (n2/nres)*dmean2
-    dsqmeanres = (n1/nres)*dsqmean1 + (n2/nres)*dsqmean2
+    dmeanres = float(n1)/float(nres)*dmean1 + float(n2)/float(nres)*dmean2
+    dsqmeanres = float(n1)/float(nres)*dsqmean1 + float(n2)/float(nres)*dsqmean2
     dminres = np.minimum(dmin1, dmin2)
     dmaxres = np.maximum(dmax1, dmax2)
 

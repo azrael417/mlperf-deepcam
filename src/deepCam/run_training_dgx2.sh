@@ -33,7 +33,7 @@ mpirun -np ${totalranks} ${mpioptions} ${profile} python train_hdf5_ddp.py \
        --output_dir ${output_dir} \
        --model_prefix "classifier" \
        --start_lr 1e-3 \
-       --validation_frequency 200 \
+       --validation_frequency 5 \
        --logging_frequency 0 \
        --save_frequency 400 \
        --max_epochs 30 \

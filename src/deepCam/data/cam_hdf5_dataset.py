@@ -20,7 +20,7 @@ class CamDataset(Dataset):
             
         #split
         num_files_local = len(self.all_files) // self.comm_size
-        start_idx = comm_rank * num_files_local
+        start_idx = self.comm_rank * num_files_local
         end_idx = start_idx + num_files_local
         self.files = self.all_files[start_idx:end_idx]
         
@@ -53,15 +53,12 @@ class CamDataset(Dataset):
         #get statsfile for normalization
         #open statsfile
         with h5.File(self.statsfile, "r") as f:
-            data_shift = f["climate/minval"][self.channels]
-            data_scale = 1. / ( f["climate/maxval"][self.channels] - data_shift )
+            data_shift = f["climate"]["minval"][self.channels]
+            data_scale = 1. / ( f["climate"]["maxval"][self.channels] - data_shift )
 
         #reshape into broadcastable shape
-        data_shift = np.reshape( data_shift, (1, data_shift.shape[0], 1, 1) ).astype(np.float32)
-        data_scale = np.reshape( data_scale, (1, data_scale.shape[0], 1, 1) ).astype(np.float32)
-        #store into tensors
-        self.data_shift = torch.tensor(data_shift, requires_grad=False)
-        self.data_scale	= torch.tensor(data_scale, requires_grad=False)
+        self.data_shift = np.reshape( data_shift, (data_shift.shape[0], 1, 1) ).astype(np.float32)
+        self.data_scale = np.reshape( data_scale, (data_scale.shape[0], 1, 1) ).astype(np.float32)
         
         print("Initialized dataset with ", self.length, " samples.")
 
@@ -86,12 +83,7 @@ class CamDataset(Dataset):
         #transpose to NCHW
         data = np.transpose(data, (2,0,1))
         
-        #unsqueeze
-        data = data.unsqueeze(0)
-        label = label.unsqueeze(0)
-        
         #preprocess
         data = self.data_scale * (data - self.data_shift)
-        label = self.data_scale * (label - self.data_shift)
         
         return data, label, filename

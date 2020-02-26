@@ -20,9 +20,13 @@ def get_local_rank():
         return 0
     
     #number of GPUs per node
-    n = torch.cuda.device_count() // dist.get_size()
+    if torch.cuda.device_count() > dist.get_world_size():
+        local_rank = dist.get_rank()
+    else:
+        n = dist.get_world_size() // torch.cuda.device_count()
+        local_rank = dist.get_rank() % n
     
-    return dist.get_rank() % n
+    return local_rank
 
 
 def get_size():
@@ -30,7 +34,7 @@ def get_size():
     Gets size of communicator
     """
     if dist.is_available() and dist.is_initialized():
-        size = dist.get_size()
+        size = dist.get_world_size()
     else:
         size = 1
     return size

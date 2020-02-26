@@ -145,32 +145,43 @@ import matplotlib.pyplot as plt
 #def lr_poly(base_lr, iter_, max_iter=100, power=0.9):
 #    return base_lr * ((1 - float(iter_) / max_iter) ** power)
 
+def compute_score(prediction, gt, num_classes, device_id, type="iou", weights=None):
+    #flatten input
+    p_flat = torch.flatten(prediction)
+    gt_flat = torch.flatten(gt)
+    
+    #compute confusion matrix
+    confusion_matrix = torch.Tensor(num_classes, num_classes).to(device_id)
+    for t, p in zip(gt_flat.view(-1), p_flat.view(-1)):
+        confusion_matrix[t.long(), p.long()] += 1
+        
+    print(confusion_matrix)
 
-def get_iou(pred, gt, n_classes=3):
-    total_iou = 0.0
-    for i in range(len(pred)):
-        pred_tmp = pred[i].int()
-        gt_tmp = gt[i].int()
-
-        intersect = [0] * n_classes
-        union = [0] * n_classes
-        for j in range(n_classes):
-            match = (pred_tmp == j).int() + (gt_tmp == j).int()
-            
-            it = torch.sum(match == 2).item()
-            un = torch.sum(match > 0).item()
-
-            intersect[j] += it
-            union[j] += un
-
-        iou = []
-        for k in range(n_classes):
-            if union[k] == 0:
-                continue
-            iou.append(intersect[k] / union[k])
-
-        img_iou = (sum(iou) / len(iou))
-        total_iou += img_iou
-
-    return total_iou
+#def get_iou(pred, gt, n_classes=3):
+#    total_iou = 0.0
+#    for i in range(len(pred)):
+#        pred_tmp = pred[i].int()
+#        gt_tmp = gt[i].int()
+#
+#        intersect = [0] * n_classes
+#        union = [0] * n_classes
+#        for j in range(n_classes):
+#            match = (pred_tmp == j).int() + (gt_tmp == j).int()
+#            
+#            it = torch.sum(match == 2).item()
+#            un = torch.sum(match > 0).item()
+#
+#            intersect[j] += it
+#            union[j] += un
+#
+#        iou = []
+#        for k in range(n_classes):
+#            if union[k] == 0:
+#                continue
+#            iou.append(intersect[k] / union[k])
+#
+#        img_iou = (sum(iou) / len(iou))
+#        total_iou += img_iou
+#
+#    return total_iou
     
