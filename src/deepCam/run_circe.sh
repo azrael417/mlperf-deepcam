@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A hpc
 #SBATCH --mpi=pmix
-#SBATCH --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data
+#SBATCH --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro
 #SBATCH --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug
 #SBATCH --container-workdir "/opt/deepCam"
 
