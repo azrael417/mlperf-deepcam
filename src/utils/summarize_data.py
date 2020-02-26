@@ -54,7 +54,7 @@ def create_token(filename, data_format="nchw"):
 #global parameters
 overwrite = False
 data_format = "nhwc"
-data_path_prefix = "/raid/tkurth/cam5_data"
+data_path_prefix = "/data"
 
 #root path
 root = os.path.join( data_path_prefix, "train" )

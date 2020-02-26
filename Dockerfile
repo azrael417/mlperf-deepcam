@@ -7,15 +7,18 @@ RUN conda config --add channels conda-forge \
     && conda install matplotlib basemap basemap-data-hires pillow h5py
 ENV PROJ_LIB /opt/conda/share/proj
 
+#pip install more python modules
+RUN pip install wandb
+
 #copy additional stuff
 COPY ./src/deepCam /opt/deepCam
-#COPY ./src/utils /opt/utils
+COPY ./src/utils /opt/utils
 
 #init empty git repo so that wandb works
-#RUN cd /opt/deepCam && git init
+RUN cd /opt/deepCam && git init
 
 #copy cert:
-#COPY no-git/wandb_cert.key /root/.wandbirc
+COPY no-git/wandb_cert.key /root/.wandbirc
 
 #create additional folders for mapping data in
-RUN mkdir -p /data && mkdir -p /data && mkdir -p /data/output
+RUN mkdir -p /data
