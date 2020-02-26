@@ -7,6 +7,9 @@ RUN conda config --add channels conda-forge \
     && conda install matplotlib basemap basemap-data-hires pillow h5py
 ENV PROJ_LIB /opt/conda/share/proj
 
+#install mpi4py
+RUN pip install mpi4py
+
 #pip install more python modules
 RUN pip install wandb
 
