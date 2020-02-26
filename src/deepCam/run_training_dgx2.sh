@@ -37,4 +37,5 @@ mpirun -np ${totalranks} ${mpioptions} ${profile} python train_hdf5_ddp.py \
        --logging_frequency 0 \
        --save_frequency 400 \
        --max_epochs 30 \
+       --amp_opt_level O1 \
        --local_batch_size 2 |& tee ${output_dir}/train.out

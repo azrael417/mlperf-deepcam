@@ -237,9 +237,9 @@ def main(pargs):
             
             # Compute score
             predictions = torch.max(outputs, 1)[1]
-            local_iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
-            
-            print(local_iou)
+            iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
+            iou_avg = iou.detach()
+            dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
             
             # Backprop
             optimizer.zero_grad()
@@ -255,7 +255,10 @@ def main(pargs):
                 scheduler.step()
 
             #print some metrics
-            printr('{:14.4f} REPORT training: step {} loss {} LR {}'.format(dt.datetime.now().timestamp(), step, loss_avg.item() / float(comm_size), current_lr), 0)
+            printr('{:14.4f} REPORT training: step {} loss {} iou {} LR {}'.format(dt.datetime.now().timestamp(), step,
+                                                                                   loss_avg.item() / float(comm_size),
+                                                                                   iou_avg.item() / float(comm_size),
+                                                                                   current_lr), 0)
 
             ##visualize if requested
             #if (step % pargs.visualization_frequency == 0) and (hvd.rank() == 0):
@@ -283,6 +286,7 @@ def main(pargs):
                 
                 count_sum_val = torch.Tensor([0.]).to(device)
                 loss_sum_val = torch.Tensor([0.]).to(device)
+                iou_sum_val = torch.Tensor([0.]).to(device)
                 
                 # disable gradients
                 with torch.no_grad():
@@ -304,17 +308,20 @@ def main(pargs):
                         #increase counter
                         count_sum_val += 1.
                         
-                        ## Compute score
-                        #predictions_val = torch.max(outputs_val, 1)[1]
-                        #local_iou_val = utils.get_iou(predictions_val, label_val, n_classes=3)
+                        # Compute score
+                        predictions_val = torch.max(outputs_val, 1)[1]
+                        iou_val = utils.compute_score(predictions_val, label_val, device_id=device, num_classes=3)
+                        iou_sum_val += iou_val
                         
                 # average the validation loss
                 dist.reduce(count_sum_val, dst=0, op=dist.ReduceOp.SUM)
                 dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.reduce(iou_sum_val, dst=0, op=dist.ReduceOp.SUM)
                 loss_avg_val = loss_sum_val.item() / count_sum_val.item()
+                iou_avg_val = iou_sum_val.item() / count_sum_val.item()
                 
                 # print results
-                printr('{:14.4f} REPORT validation: step {} loss {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val), 0)
+                printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
 
                 ## log in wandb
                 #if (pargs.logging_frequency > 0) and (hvd.rank() == 0):
