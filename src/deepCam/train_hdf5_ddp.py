@@ -49,19 +49,31 @@ def printr(msg, rank=0):
 def main(pargs):
     
     #get master address and port
-    addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
-    #use that URI
-    address = addrport.split(":")[0]
-    #use the port but add 1
-    port = addrport.split(":")[1]
-    port = str(int(port)+1)
-    os.environ["MASTER_ADDR"] = address
-    os.environ["MASTER_PORT"] = port
+    if pargs.wireup_method == "openmpi":
+        addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
+        #use that URI
+        address = addrport.split(":")[0]
+        #use the port but add 1
+        port = addrport.split(":")[1]
+        port = str(int(port)+1)
+        os.environ["MASTER_ADDR"] = address
+        os.environ["MASTER_PORT"] = port
+        rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
+        world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
+    else if pargs.wireup_method == "slurm":
+        rank = os.getenv("PMIX_RANK")
+        world_size = os.gentenv("SLURM_NTASKS")
+        address = os.getenv("SLURM_SRUN_COMM_HOST")
+        port = "36998"
+        os.environ["MASTER_ADDR"] = address
+        os.environ["MASTER_PORT"] = port
+    else:
+        raise NotImplementedError()
     
     #init DDP
     dist.init_process_group(backend = "nccl", 
-                            rank = os.getenv('OMPI_COMM_WORLD_RANK',0),
-                            world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0))
+                            rank = rank,
+                            world_size = world_size)
     #torch.distributed.init_process_group(backend="mpi")
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
@@ -366,6 +378,7 @@ if __name__ == "__main__":
 
     #arguments
     AP = ap.ArgumentParser()
+    AP.add_argument("--wireup_method", type=str, default="openmpi", choices=["openmpi", "slurm"], help="Specify what is used for wiring up the ranks")
     AP.add_argument("--run_tag", type=str, help="Unique run tag, to allow for better identification")
     AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")
     AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
@@ -385,8 +398,6 @@ if __name__ == "__main__":
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     AP.add_argument("--loss_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
-    AP.add_argument("--lr_decay_patience", type=int, default=3, help="Minimum number of steps used to wait before decreasing LR")
-    AP.add_argument("--lr_decay_rate", type=float, default=0.25, help="LR decay factor")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
     #AP.add_argument("--resume_logging", action='store_true')
