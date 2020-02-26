@@ -7,10 +7,15 @@
 rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
+#parameters
+run_tag="deepcam_prediction_run1"
+data_dir_prefix="/data"
+output_dir="/runs/${run_tag}"
+
 #run training
 srun --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} \
      --container-workdir /opt/deepCam \
-     --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro \
+     --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
      --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
      python train_hdf5_ddp.py \
        --wireup_method "slurm" \
@@ -24,4 +29,4 @@ srun --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} \
        --save_frequency 400 \
        --max_epochs 30 \
        --amp_opt_level O1 \
-       --local_batch_size 2 |& tee ${output_dir}/train.out
+       --local_batch_size 2 |& tee -a ${output_dir}/train.out
