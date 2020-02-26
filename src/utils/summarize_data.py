@@ -31,11 +31,14 @@ def merge_token(token1, token2):
 
 
 #create data token
-def create_token(filename, data_format="nchw"):
-    
-    with h5.File(filename, "r") as f:
-        arr = f["climate/data"][...]
-    
+def create_token(filename, data_format="nchw", rank = 0):
+
+    try:
+        with h5.File(filename, "r") as f:
+            arr = f["climate/data"][...]
+    except:
+        raise IOError("Cannot open file {} on rank {}".format(filename, rank))
+        
     #prep axis for ops
     axis = (1,2) if data_format == "nchw" else (0,1)
 
@@ -81,7 +84,7 @@ files = allfiles[start:end]
 #get first token and then merge recursively
 token = create_token(files[0], data_format)
 for filename in files[1:]:
-    token = merge_token(create_token(filename, data_format), token)
+    token = merge_token(create_token(filename, data_format, comm_rank), token)
 
 #communicate results
 alltoken = comm.gather(token, 0)
@@ -101,4 +104,4 @@ if comm_rank == 0:
         f["climate/maxval"]=token[4]
         
 #wait for rank 0 to complete
-mpi.barrier()
+comm.barrier()
