@@ -207,12 +207,12 @@ def main(pargs):
                                comm_rank = comm_rank)
     train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
     
-    # validation
+    # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
     validation_dir = os.path.join(root_dir, "validation")
     validation_set = cam.CamDataset(validation_dir, 
                                statsfile = os.path.join(root_dir, 'stats.h5'),
                                channels = pargs.channels,
-                               shuffle = False, 
+                               shuffle = (pargs.max_validation_steps is not None),
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
@@ -305,6 +305,7 @@ def main(pargs):
                 with torch.no_grad():
                 
                     # iterate over validation sample
+                    step_val = 0
                     for inputs_val, label_val, filename_val in validation_loader:
                         
                         #send to device
@@ -325,6 +326,12 @@ def main(pargs):
                         predictions_val = torch.max(outputs_val, 1)[1]
                         iou_val = utils.compute_score(predictions_val, label_val, device_id=device, num_classes=3)
                         iou_sum_val += iou_val
+                        
+                        #increase eval step counter
+                        step_val += 1
+                        
+                        if (pargs.max_validation_steps is not None) and step_val > pargs.max_validation_steps:
+                            break
                         
                 # average the validation loss
                 dist.reduce(count_sum_val, dst=0, op=dist.ReduceOp.SUM)
@@ -389,6 +396,7 @@ if __name__ == "__main__":
     AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
     AP.add_argument("--save_frequency", type=int, default=100, help="Frequency with which the model is saved in number of steps")
     AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
+    AP.add_argument("--max_validation_steps", type=int, default=None, help="Number of validation steps to perform. Helps when validation takes a long time")
     AP.add_argument("--logging_frequency", type=int, default=100, help="Frequency with which the training progress is logged. If not positive, logging will be disabled")
     AP.add_argument("--visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during training")
     AP.add_argument("--local_batch_size", type=int, default=1, help="Number of samples per local minibatch")
