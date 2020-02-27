@@ -60,7 +60,7 @@ def main(pargs):
         os.environ["MASTER_PORT"] = port
         rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
         world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
-    else if pargs.wireup_method == "slurm":
+    elif pargs.wireup_method == "slurm":
         rank = os.getenv("PMIX_RANK")
         world_size = os.gentenv("SLURM_NTASKS")
         address = os.getenv("SLURM_SRUN_COMM_HOST")
