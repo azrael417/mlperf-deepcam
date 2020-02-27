@@ -26,6 +26,10 @@ def compute_score(prediction, gt, num_classes, device_id, type="iou", weights=No
         fn[j] += torch.sum(not_equal[gt == j])
 
     for j in range(0, num_classes):
-        iou[j] = tp[j].float() / (tp[j].float() + fp[j].float() + fn[j].float())
+        union = tp[j] + fp[j] + fn[j]
+        if union.item() == 0:
+            iou[j] = torch.tensor(1.)
+        else:
+            iou[j] = tp[j].float() / union.float()
     
     return sum(iou)/float(num_classes)
