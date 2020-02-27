@@ -3,7 +3,7 @@
 #SBATCH -J summarize_cam5
 #SBATCH -t 01:00:00
 
-rankspernode=32
+rankspernode=48
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
 srun --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} \
