@@ -21,7 +21,8 @@ COPY ./src/utils /opt/utils
 RUN cd /opt/deepCam && git init
 
 #copy cert:
-COPY no-git/wandb_cert.key /root/.wandbirc
+RUN mkdir -p /opt/certs
+COPY no-git/wandb_cert.key /opt/certs/.wandbirc
 
 #create additional folders for mapping data in
 RUN mkdir -p /data

@@ -105,7 +105,7 @@ def main(pargs):
     # Setup WandB
     if (pargs.logging_frequency > 0) and (comm_rank == 0):
         # get wandb api token
-        with open("/root/.wandbirc") as f:
+        with open("/opt/certs/.wandbirc") as f:
             wbtoken = f.readlines()[0].replace("\n","")
         # log in: that call can be blocking, it should be quick
         sp.call(["wandb", "login", wbtoken])
