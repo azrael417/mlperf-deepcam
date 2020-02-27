@@ -20,12 +20,8 @@ def get_local_rank():
         return 0
     
     #number of GPUs per node
-    if torch.cuda.device_count() > dist.get_world_size():
-        local_rank = dist.get_rank()
-    else:
-        n = dist.get_world_size() // torch.cuda.device_count()
-        local_rank = dist.get_rank() % n
-    
+    local_rank = dist.get_rank() % torch.cuda.device_count()
+        
     return local_rank
 
 
