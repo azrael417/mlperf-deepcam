@@ -12,8 +12,18 @@ def merge_all_token(token, comm):
     weight = float(n)/float(nres)
     dmeanres = comm.allreduce(weight*token[1], op = MPI.SUM)
     dsqmeanres = comm.allreduce(weight*token[2], op = MPI.SUM)
-    dminres = comm.allreduce(token[3], op = MPI.MIN)
-    dmaxres = comm.allreduce(token[4], op = MPI.MAX)
+    #these guys require a custom reduction because there is no elemwise mean
+    #so lets just gather them
+    #min
+    token_all = comm.allgather(token[3])
+    dminres = token_all[0]
+    for tk in token_all[1:]:
+        dminres = np.minimum(dminres, tk)
+    #max
+    token_all = comm.allgather(token[4])
+    dmaxres = token_all[0]
+    for tk in token_all[1:]:
+        dmaxres = np.maximum(dmaxres, tk)
 
     return (nres, dmeanres, dsqmeanres, dminres, dmaxres)
 
@@ -86,6 +96,10 @@ root = os.path.join( data_path_prefix, "train" )
 #get files
 allfiles = [ os.path.join(root, x)  for x in os.listdir(root) \
               if x.endswith('.h5') and x.startswith('data-') ]
+
+#DEBUG
+allfiles = allfiles[:20]
+#DEBUG
 
 #split list
 numfiles = len(allfiles)
