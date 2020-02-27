@@ -1,6 +1,6 @@
 # Basics
 import os
-#import wandb
+import wandb
 import numpy as np
 import argparse as ap
 import datetime as dt
@@ -102,39 +102,37 @@ def main(pargs):
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
     
-    ## Setup WandB
-    #if (pargs.logging_frequency > 0) and (comm_rank == 0):
-    #    # get wandb api token
-    #    with open("/root/.wandbirc") as f:
-    #        wbtoken = f.readlines()[0].replace("\n","")
-    #    # log in: that call can be blocking, it should be quick
-    #    sp.call(["wandb", "login", wbtoken])
-    #    
-    #    #init db and get config
-    #    resume_flag = pargs.run_tag if pargs.resume_logging else False
-    #    wandb.init(project = 'ERA5 prediction', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
-    #    config = wandb.config
-    #
-    #    #set general parameters
-    #    config.root_dir = root_dir
-    #    config.output_dir = pargs.output_dir
-    #    config.max_steps = pargs.max_steps
-    #    config.local_batch_size = pargs.local_batch_size
-    #    config.num_workers = hvd.size()
-    #    config.channels = pargs.channels
-    #    config.noise_dimensions = pargs.noise_dimensions
-    #    config.noise_type = pargs.noise_type
-    #    config.optimizer = pargs.optimizer
-    #    config.start_lr = pargs.start_lr
-    #    config.adam_eps = pargs.adam_eps
-    #    config.weight_decay = pargs.weight_decay
-    #    config.loss_type = pargs.loss_type
-    #    config.model_prefix = pargs.model_prefix
-    #    config.precision = "fp16" if  pargs.enable_fp16 else "fp32"
-    #
-    #    # lr schedule if applicable
-    #    for key in pargs.lr_schedule:
-    #        config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
+    # Setup WandB
+    if (pargs.logging_frequency > 0) and (comm_rank == 0):
+        # get wandb api token
+        with open("/root/.wandbirc") as f:
+            wbtoken = f.readlines()[0].replace("\n","")
+        # log in: that call can be blocking, it should be quick
+        sp.call(["wandb", "login", wbtoken])
+        
+        #init db and get config
+        resume_flag = pargs.run_tag if pargs.resume_logging else False
+        wandb.init(project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
+        config = wandb.config
+    
+        #set general parameters
+        config.root_dir = root_dir
+        config.output_dir = pargs.output_dir
+        config.max_steps = pargs.max_steps
+        config.local_batch_size = pargs.local_batch_size
+        config.num_workers = comm_size
+        config.channels = pargs.channels
+        config.optimizer = pargs.optimizer
+        config.start_lr = pargs.start_lr
+        config.adam_eps = pargs.adam_eps
+        config.weight_decay = pargs.weight_decay
+        config.model_prefix = pargs.model_prefix
+        config.amp_opt_level = pargs.amp_opt_level
+        config.loss_weight_pow = pargs.loss_weight_pow
+    
+        # lr schedule if applicable
+        for key in pargs.lr_schedule:
+            config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
             
 
     # Define architecture
@@ -147,7 +145,7 @@ def main(pargs):
     net.to(device)
 
     #select loss
-    loss_pow = pargs.loss_pow
+    loss_pow = pargs.loss_weight_pow
     #some magic numbers
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
     fpw_1 = 2.61461122397522257612
@@ -219,8 +217,8 @@ def main(pargs):
     validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
         
     # Train network
-    #if (pargs.logging_frequency > 0) and (comm_rank == 0):
-    #    wandb.watch(net)
+    if (pargs.logging_frequency > 0) and (comm_rank == 0):
+        wandb.watch(net)
     
     printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
     step = start_step
@@ -286,10 +284,12 @@ def main(pargs):
             #        img = Image.open(filename)
             #        wandb.log({"Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth vs. Difference")]}, step = step)
             #
-            ##log if requested
-            #if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (hvd.rank() == 0):
-            #    wandb.log({"Training Loss": loss_avg}, step = step)
-            #    wandb.log({"Current Learning Rate": current_lr}, step = step)
+            
+            #log if requested
+            if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
+                wandb.log({"Training Loss": loss_avg}, step = step)
+                wandb.log({"Training IoU": iou_avg}, step = step)
+                wandb.log({"Current Learning Rate": current_lr}, step = step)
                 
             # validation step if desired
             if (step % pargs.validation_frequency == 0):
@@ -343,9 +343,10 @@ def main(pargs):
                 # print results
                 printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
 
-                ## log in wandb
-                #if (pargs.logging_frequency > 0) and (hvd.rank() == 0):
-                #    wandb.log({"Validation Loss": loss_val_avg}, step=step)
+                # log in wandb
+                if (pargs.logging_frequency > 0) and (comm_rank == 0):
+                    wandb.log({"Validation Loss": loss_val_avg}, step=step)
+                    wandb.log({"Validation IoU": iou_val_avg}, step=step)
 
                 # set to train
                 net.train()
@@ -358,7 +359,7 @@ def main(pargs):
                     'model': net.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'amp': amp.state_dict()
-		        }
+		}
                 torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
 
         #do some after-epoch prep, just for the books
@@ -405,11 +406,11 @@ if __name__ == "__main__":
     AP.add_argument("--start_lr", type=float, default=1e-3, help="Start LR")
     AP.add_argument("--adam_eps", type=float, default=1e-8, help="Adam Epsilon")
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
-    AP.add_argument("--loss_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
+    AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
-    #AP.add_argument("--resume_logging", action='store_true')
+    AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
 
     #run the stuff
