@@ -97,10 +97,6 @@ root = os.path.join( data_path_prefix, "train" )
 allfiles = [ os.path.join(root, x)  for x in os.listdir(root) \
               if x.endswith('.h5') and x.startswith('data-') ]
 
-#DEBUG
-allfiles = allfiles[:96]
-#DEBUG
-
 #split list
 numfiles = len(allfiles)
 chunksize = int(np.ceil(numfiles / comm_size))
