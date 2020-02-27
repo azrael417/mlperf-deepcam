@@ -2,6 +2,7 @@
 #SBATCH -A hpc
 #SBATCH -J train_cam5
 #SBATCH -t 02:00:00
+#SBATCH --wait=30
 
 #ranks per node
 rankspernode=16

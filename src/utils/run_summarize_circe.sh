@@ -2,6 +2,7 @@
 #SBATCH -A hpc
 #SBATCH -J summarize_cam5
 #SBATCH -t 01:00:00
+#SBATCH --wait=30
 
 rankspernode=48
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
