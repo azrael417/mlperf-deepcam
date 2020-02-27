@@ -131,8 +131,9 @@ def main(pargs):
         config.loss_weight_pow = pargs.loss_weight_pow
     
         # lr schedule if applicable
-        for key in pargs.lr_schedule:
-            config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
+        if pargs.lr_schedule:
+            for key in pargs.lr_schedule:
+                config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
             
 
     # Define architecture
