@@ -4,7 +4,20 @@ import numpy as np
 import h5py as h5
 from mpi4py import MPI
 
-#merge function helper
+#merge function helpers
+def merge_all_token(token, comm):
+    #first, allreduce the counts
+    n = token[0]
+    nres = comm.allreduce(token[0])
+    weight = float(n)/float(nres)
+    dmeanres = comm.allreduce(weight*token[1], op = MPI.SUM)
+    dsqmeanres = comm.allreduce(weight*token[2], op = MPI.SUM)
+    dminres = comm.allreduce(token[3], op = MPI.MIN)
+    dmaxres = comm.allreduce(token[4], op = MPI.MAX)
+
+    return (nres, dmeanres, dsqmeanres, dminres, dmaxres)
+
+
 def merge_token(token1, token2):
     #extract data
     #first
@@ -87,13 +100,10 @@ for filename in files[1:]:
     token = merge_token(create_token(filename, data_format, comm_rank), token)
 
 #communicate results
-alltoken = comm.gather(token, 0)
+token = merge_all_token(token, comm)
 
+#write file on rank 0
 if comm_rank == 0:
-    #merge the remaining token
-    token = alltoken[0]
-    for token2 in alltoken[1:]:
-        token = merge_token(token, token2)
 
     #save the stuff
     with h5.File(os.path.join(data_path_prefix, "stats.h5"), "w") as f:
