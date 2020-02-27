@@ -62,8 +62,9 @@ def main(pargs):
         world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
     elif pargs.wireup_method == "slurm":
         rank = os.getenv("PMIX_RANK")
-        world_size = os.gentenv("SLURM_NTASKS")
-        address = os.getenv("SLURM_SRUN_COMM_HOST")
+        world_size = os.getenv("SLURM_NTASKS")
+        #address = os.getenv("SLURM_SRUN_COMM_HOST")
+        address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
         port = "36998"
         os.environ["MASTER_ADDR"] = address
         os.environ["MASTER_PORT"] = port
