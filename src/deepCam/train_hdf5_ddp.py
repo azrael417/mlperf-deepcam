@@ -118,7 +118,7 @@ def main(pargs):
         #set general parameters
         config.root_dir = root_dir
         config.output_dir = pargs.output_dir
-        config.max_steps = pargs.max_steps
+        config.max_epochs = pargs.max_epochs
         config.local_batch_size = pargs.local_batch_size
         config.num_workers = comm_size
         config.channels = pargs.channels
