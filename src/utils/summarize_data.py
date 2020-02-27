@@ -98,7 +98,7 @@ allfiles = [ os.path.join(root, x)  for x in os.listdir(root) \
               if x.endswith('.h5') and x.startswith('data-') ]
 
 #DEBUG
-allfiles = allfiles[:20]
+allfiles = allfiles[:96]
 #DEBUG
 
 #split list
