@@ -346,8 +346,8 @@ def main(pargs):
 
                 # log in wandb
                 if (pargs.logging_frequency > 0) and (comm_rank == 0):
-                    wandb.log({"Validation Loss": loss_val_avg}, step=step)
-                    wandb.log({"Validation IoU": iou_val_avg}, step=step)
+                    wandb.log({"Validation Loss": loss_avg_val}, step=step)
+                    wandb.log({"Validation IoU": iou_avg_val}, step=step)
 
                 # set to train
                 net.train()
