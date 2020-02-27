@@ -25,6 +25,7 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --model_prefix "classifier" \
        --start_lr 1e-3 \
        --validation_frequency 200 \
+       --max_validation_steps 50 \
        --logging_frequency 0 \
        --save_frequency 400 \
        --max_epochs 30 \
