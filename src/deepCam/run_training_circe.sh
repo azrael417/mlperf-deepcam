@@ -2,7 +2,6 @@
 #SBATCH -A hpc
 #SBATCH -J train_cam5
 #SBATCH -t 02:00:00
-#SBATCH --wait=30
 
 #ranks per node
 rankspernode=16
@@ -14,7 +13,7 @@ data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
 
 #run training
-srun --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c 96 --cpu_bind=cores \
+srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rankspernode} )) --cpu_bind=cores \
      --container-workdir /opt/deepCam \
      --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
      --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
