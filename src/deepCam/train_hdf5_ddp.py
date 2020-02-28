@@ -288,8 +288,8 @@ def main(pargs):
             
             #log if requested
             if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
-                wandb.log({"Training Loss": loss_avg}, step = step)
-                wandb.log({"Training IoU": iou_avg}, step = step)
+                wandb.log({"Training Loss": loss_avg.item() / float(comm_size)}, step = step)
+                wandb.log({"Training IoU": iou_avg.item() / float(comm_size)}, step = step)
                 wandb.log({"Current Learning Rate": current_lr}, step = step)
                 
             # validation step if desired

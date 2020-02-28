@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -A hpc
 #SBATCH -J train_cam5
-#SBATCH -t 02:00:00
+#SBATCH -t 08:00:00
 
 #ranks per node
 rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
 #parameters
-run_tag="deepcam_prediction_run1"
+run_tag="deepcam_prediction_run3"
 data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
 
@@ -24,6 +24,7 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --output_dir ${output_dir} \
        --model_prefix "classifier" \
        --start_lr 1e-3 \
+       --lr_schedule type="multistep",milestones="20000",decay_rate="0.1" \
        --validation_frequency 200 \
        --max_validation_steps 50 \
        --logging_frequency 50 \
