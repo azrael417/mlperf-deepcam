@@ -167,7 +167,9 @@ def main(pargs):
     net = DDP(net)
 
     #restart from checkpoint if desired
-    if (comm_rank == 0) and (pargs.checkpoint):
+    #if (comm_rank == 0) and (pargs.checkpoint):
+    #load it on all ranks for now
+    if pargs.checkpoint:
         checkpoint = torch.load(pargs.checkpoint, map_location = device)
         start_step = checkpoint['step']
         start_epoch = checkpoint['epoch']
