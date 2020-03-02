@@ -25,8 +25,15 @@ from PIL import Image
 
 #DDP
 import torch.distributed as dist
-from apex import amp
-from apex.parallel import DistributedDataParallel as DDP
+try:
+    from apex import amp
+    from apex.parallel import DistributedDataParallel as DDP
+    have_apex = True
+else:
+    from torch.nn.parallel.distributed import DistributedDataParallel as DDP
+    have_apex = False
+
+#comm wrapper
 from utils import comm
 
 
@@ -134,8 +141,9 @@ def main(pargs):
     else:
         raise ValueError("Error, optimizer {} not supported".format(pargs.optimizer))
 
-    #wrap model and opt into amp
-    net, optimizer = amp.initialize(net, optimizer, opt_level = pargs.amp_opt_level)
+    if have_apex:
+        #wrap model and opt into amp
+        net, optimizer = amp.initialize(net, optimizer, opt_level = pargs.amp_opt_level)
     
     #make model distributed
     net = DDP(net)
@@ -149,7 +157,8 @@ def main(pargs):
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer'])
         net.load_state_dict(checkpoint['model'])
-        amp.load_state_dict(checkpoint['amp'])
+        if have_apex:
+            amp.load_state_dict(checkpoint['amp'])
     else:
         start_step = 0
         start_epoch = 0
@@ -231,8 +240,11 @@ def main(pargs):
             
             # Backprop
             optimizer.zero_grad()
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
+            if have_apex:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
             optimizer.step()
 
             #step counter
@@ -334,9 +346,10 @@ def main(pargs):
                     'step': step,
                     'epoch': epoch,
                     'model': net.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'amp': amp.state_dict()
+                    'optimizer': optimizer.state_dict()
 		}
+                if have_apex:
+                    checkpoint['amp'] = amp.state_dict()
                 torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
 
         #do some after-epoch prep, just for the books
@@ -348,9 +361,10 @@ def main(pargs):
                 'step': step,
                 'epoch': epoch,
                 'model': net.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'amp': amp.state_dict()
+                'optimizer': optimizer.state_dict()
             }
+            if have_apex:
+                checkpoint['amp'] = amp.state_dict()
             torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_epoch_" + str(epoch) + ".cpt") )
 
         #are we done?
