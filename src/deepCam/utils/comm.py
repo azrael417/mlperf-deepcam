@@ -20,7 +20,10 @@ def get_local_rank():
         return 0
     
     #number of GPUs per node
-    local_rank = dist.get_rank() % torch.cuda.device_count()
+    if torch.cuda.is_available():
+        local_rank = dist.get_rank() % torch.cuda.device_count()
+    else:
+        local_rank = 0
         
     return local_rank
 
@@ -56,7 +59,7 @@ def init(method):
                                 world_size = world_size)
         
     elif method == "nccl-slurm":
-	rank = os.getenv("PMIX_RANK")
+        rank = os.getenv("PMIX_RANK")
         world_size = os.getenv("SLURM_NTASKS")
         address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
         port = "36998"

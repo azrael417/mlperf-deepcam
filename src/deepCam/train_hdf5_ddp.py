@@ -29,7 +29,7 @@ try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as DDP
     have_apex = True
-else:
+except:
     from torch.nn.parallel.distributed import DistributedDataParallel as DDP
     have_apex = False
 
@@ -86,7 +86,7 @@ def main(pargs):
     # Setup WandB
     if (pargs.logging_frequency > 0) and (comm_rank == 0):
         # get wandb api token
-        with open("/opt/certs/.wandbirc") as f:
+        with open(os.path.join(pargs.wandb_certdir, ".wandbirc")) as f:
             wbtoken = f.readlines()[0].replace("\n","")
         # log in: that call can be blocking, it should be quick
         sp.call(["wandb", "login", wbtoken])
@@ -379,6 +379,7 @@ if __name__ == "__main__":
     #arguments
     AP = ap.ArgumentParser()
     AP.add_argument("--wireup_method", type=str, default="nccl-openmpi", choices=["nccl-openmpi", "nccl-slurm", "mpi"], help="Specify what is used for wiring up the ranks")
+    AP.add_argument("--wandb_certdir", type=str, default="/opt/certs", help="Directory in which to find the certificate for wandb logging.")
     AP.add_argument("--run_tag", type=str, help="Unique run tag, to allow for better identification")
     AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")
     AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
