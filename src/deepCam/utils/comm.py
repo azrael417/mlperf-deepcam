@@ -34,3 +34,43 @@ def get_size():
     else:
         size = 1
     return size
+
+
+def init(method):
+    #get master address and port
+    if method == "nccl-openmpi":
+        addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
+        #use that URI
+        address = addrport.split(":")[0]
+        #use the port but add 1
+        port = addrport.split(":")[1]
+        port = str(int(port)+1)
+        os.environ["MASTER_ADDR"] = address
+        os.environ["MASTER_PORT"] = port
+        rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
+        world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
+        
+        #init DDP
+        dist.init_process_group(backend = "nccl",
+                                rank = rank,
+                                world_size = world_size)
+        
+    elif method == "nccl-slurm":
+	rank = os.getenv("PMIX_RANK")
+        world_size = os.getenv("SLURM_NTASKS")
+        address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
+        port = "36998"
+        os.environ["MASTER_ADDR"] = address
+        os.environ["MASTER_PORT"] = port
+
+        #init DDP
+        dist.init_process_group(backend = "nccl",
+                                rank = rank,
+                                world_size = world_size)
+        
+    elif method == "mpi":
+        #init DDP
+        dist.init_process_group(backend = "mpi")
+        
+    else:
+        raise NotImplementedError()

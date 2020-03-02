@@ -18,13 +18,13 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
      --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
      --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
      python train_hdf5_ddp.py \
-       --wireup_method "slurm" \
+       --wireup_method "nccl-slurm" \
        --run_tag ${run_tag} \
        --data_dir_prefix ${data_dir_prefix} \
        --output_dir ${output_dir} \
        --model_prefix "classifier" \
        --start_lr 1e-3 \
-       --lr_schedule type="multistep",milestones="20000",decay_rate="0.1" \
+       --lr_schedule type="multistep",milestones="20000 40000",decay_rate="0.1" \
        --validation_frequency 200 \
        --max_validation_steps 50 \
        --logging_frequency 50 \

@@ -28,6 +28,7 @@ mkdir -p ${output_dir}
 
 #run the stuff
 mpirun -np ${totalranks} ${mpioptions} ${profile} python train_hdf5_ddp.py \
+       --wireup_method "nccl-openmpi" \
        --run_tag ${run_tag} \
        --data_dir_prefix ${data_dir_prefix} \
        --output_dir ${output_dir} \

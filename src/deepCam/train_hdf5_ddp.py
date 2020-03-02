@@ -47,35 +47,9 @@ def printr(msg, rank=0):
 
 #main function
 def main(pargs):
-    
-    #get master address and port
-    if pargs.wireup_method == "openmpi":
-        addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
-        #use that URI
-        address = addrport.split(":")[0]
-        #use the port but add 1
-        port = addrport.split(":")[1]
-        port = str(int(port)+1)
-        os.environ["MASTER_ADDR"] = address
-        os.environ["MASTER_PORT"] = port
-        rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
-        world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
-    elif pargs.wireup_method == "slurm":
-        rank = os.getenv("PMIX_RANK")
-        world_size = os.getenv("SLURM_NTASKS")
-        #address = os.getenv("SLURM_SRUN_COMM_HOST")
-        address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
-        port = "36998"
-        os.environ["MASTER_ADDR"] = address
-        os.environ["MASTER_PORT"] = port
-    else:
-        raise NotImplementedError()
-    
-    #init DDP
-    dist.init_process_group(backend = "nccl", 
-                            rank = rank,
-                            world_size = world_size)
-    #torch.distributed.init_process_group(backend="mpi")
+
+    #init distributed training
+    comm.init(pargs.wireup_method)
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
@@ -390,7 +364,7 @@ if __name__ == "__main__":
 
     #arguments
     AP = ap.ArgumentParser()
-    AP.add_argument("--wireup_method", type=str, default="openmpi", choices=["openmpi", "slurm"], help="Specify what is used for wiring up the ranks")
+    AP.add_argument("--wireup_method", type=str, default="nccl-openmpi", choices=["nccl-openmpi", "nccl-slurm", "mpi"], help="Specify what is used for wiring up the ranks")
     AP.add_argument("--run_tag", type=str, help="Unique run tag, to allow for better identification")
     AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")
     AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
