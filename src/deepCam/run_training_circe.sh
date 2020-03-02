@@ -11,6 +11,7 @@ totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 run_tag="deepcam_prediction_run3"
 data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
+checkpoint_file=""
 
 #run training
 srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rankspernode} )) --cpu_bind=cores \
