@@ -8,10 +8,10 @@ rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
 #parameters
-run_tag="deepcam_prediction_run3"
+run_tag="deepcam_prediction_run4"
 data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
-checkpoint_file=""
+checkpoint_file="${output_dir}/classifier_step_43200.cpt"
 
 #run training
 srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rankspernode} )) --cpu_bind=cores \
@@ -24,6 +24,8 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --data_dir_prefix ${data_dir_prefix} \
        --output_dir ${output_dir} \
        --model_prefix "classifier" \
+       --checkpoint ${checkpoint_file} \
+       --resume_logging \
        --start_lr 1e-3 \
        --lr_schedule type="multistep",milestones="20000 40000",decay_rate="0.1" \
        --validation_frequency 200 \
