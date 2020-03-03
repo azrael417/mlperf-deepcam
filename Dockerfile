@@ -13,6 +13,9 @@ RUN pip install mpi4py
 #pip install more python modules
 RUN pip install wandb
 
+#install gradual warmup
+RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
+
 #copy additional stuff
 COPY ./src/deepCam /opt/deepCam
 COPY ./src/utils /opt/utils

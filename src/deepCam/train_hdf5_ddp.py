@@ -20,6 +20,9 @@ from utils import parsing_helpers as ph
 from data import cam_hdf5_dataset as cam
 from architecture import deeplab_xception
 
+#warmup scheduler
+from warmup_scheduler import GradualWarmupScheduler
+
 #vis stuff
 from PIL import Image
 
@@ -110,6 +113,8 @@ def main(pargs):
         config.model_prefix = pargs.model_prefix
         config.amp_opt_level = pargs.amp_opt_level
         config.loss_weight_pow = pargs.loss_weight_pow
+        config.lr_warmup_steps = pargs.lr_warmup_steps
+        config.lr_warmup_fact = pargs.lr_warmup_fact
     
         # lr schedule if applicable
         if pargs.lr_schedule:
@@ -165,7 +170,12 @@ def main(pargs):
         
     #select scheduler
     if pargs.lr_schedule:
-        scheduler = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
+        scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
+
+    if pargs.lr_warmup_steps > 0:
+        scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_fact, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
+    else:
+        scheduler = scheduler_after
         
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
@@ -249,7 +259,7 @@ def main(pargs):
 
             #step counter
             step += 1
-
+            
             if pargs.lr_schedule:
                 current_lr = scheduler.get_last_lr()[0]
                 scheduler.step()
@@ -399,6 +409,8 @@ if __name__ == "__main__":
     AP.add_argument("--adam_eps", type=float, default=1e-8, help="Adam Epsilon")
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
+    AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")
+    AP.add_argument("--lr_warmup_fact", type=int, default=1, help="Multiplier for linear LR warmup")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
