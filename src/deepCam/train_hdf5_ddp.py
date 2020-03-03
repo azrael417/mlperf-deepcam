@@ -114,7 +114,7 @@ def main(pargs):
         config.amp_opt_level = pargs.amp_opt_level
         config.loss_weight_pow = pargs.loss_weight_pow
         config.lr_warmup_steps = pargs.lr_warmup_steps
-        config.lr_warmup_fact = pargs.lr_warmup_fact
+        config.lr_warmup_factor = pargs.lr_warmup_factor
     
         # lr schedule if applicable
         if pargs.lr_schedule:
@@ -173,7 +173,7 @@ def main(pargs):
         scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
     if pargs.lr_warmup_steps > 0:
-        scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_fact, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
+        scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
     else:
         scheduler = scheduler_after
         
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
     AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")
-    AP.add_argument("--lr_warmup_fact", type=int, default=1, help="Multiplier for linear LR warmup")
+    AP.add_argument("--lr_warmup_factor", type=int, default=1, help="Multiplier for linear LR warmup")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
