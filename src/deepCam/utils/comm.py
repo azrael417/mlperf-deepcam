@@ -46,9 +46,8 @@ def init(method):
         addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
         #use that URI
         address = addrport.split(":")[0]
-        #use the port but add 1
-        port = addrport.split(":")[1]
-        port = str(int(port)+1)
+        #use the default pytorch port
+        port = "29500"
         os.environ["MASTER_ADDR"] = address
         os.environ["MASTER_PORT"] = port
         rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
@@ -63,7 +62,7 @@ def init(method):
         rank = os.getenv("PMIX_RANK")
         world_size = os.getenv("SLURM_NTASKS")
         address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
-        port = "36998"
+        port = "29500"
         os.environ["MASTER_ADDR"] = address
         os.environ["MASTER_PORT"] = port
 
