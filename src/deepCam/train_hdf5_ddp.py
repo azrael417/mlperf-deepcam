@@ -410,7 +410,7 @@ if __name__ == "__main__":
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
     AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")
-    AP.add_argument("--lr_warmup_factor", type=int, default=1, help="Multiplier for linear LR warmup")
+    AP.add_argument("--lr_warmup_factor", type=float, default=1., help="Multiplier for linear LR warmup")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
