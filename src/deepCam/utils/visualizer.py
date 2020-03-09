@@ -29,10 +29,10 @@ class CamVisualizer(object):
         longs = np.linspace(-180,180,1152)
         self.my_map = (Basemap(projection='gall', llcrnrlat=min(lats), 
                              llcrnrlon=min(longs), urcrnrlat=max(lats), 
-                             urcrnrlon=max(longs), resolution = 'i'), ax=axvec[0],
+                             urcrnrlon=max(longs), resolution = 'i' ax=axvec[0]),
                        Basemap(projection='gall', llcrnrlat=min(lats), 
                              llcrnrlon=min(longs), urcrnrlat=max(lats), 
-                             urcrnrlon=max(longs), resolution = 'i'), ax=axvec[1])
+                             urcrnrlon=max(longs), resolution = 'i', ax=axvec[1]))
         
         #set up meshgrid
         self.xx, self.yy = np.meshgrid(longs, lats)
