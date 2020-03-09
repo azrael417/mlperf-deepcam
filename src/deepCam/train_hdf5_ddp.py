@@ -24,6 +24,7 @@ from architecture import deeplab_xception
 from warmup_scheduler import GradualWarmupScheduler
 
 #vis stuff
+from PIL import Image
 from utils import visualizer as vizc
 
 #DDP
@@ -79,7 +80,10 @@ def main(pargs):
     else:
         printr("Using CPUs",0)
         device = torch.device("cpu")
-    
+
+    #visualize?
+    visualize = (pargs.training_visualization_frequency > 0) or (pargs.validation_visualization_frequency > 0)
+        
     #set up directories
     root_dir = os.path.join(pargs.data_dir_prefix)
     output_dir = pargs.output_dir
@@ -87,7 +91,7 @@ def main(pargs):
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
-        if pargs.visualization_frequency > 0 and not os.path.isdir(plot_dir):
+        if visualize and not os.path.isdir(plot_dir):
             os.makedirs(plot_dir)
     
     # Setup WandB
@@ -219,7 +223,7 @@ def main(pargs):
     validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
 
     #for visualization
-    if pargs.visualization_frequency > 0:
+    if visualize:
         viz = vizc.CamVisualizer()   
     
     # Train network
@@ -281,43 +285,24 @@ def main(pargs):
                                                                                    current_lr), 0)
 
             #visualize if requested
-            if (step % pargs.visualization_frequency == 0) and (comm_rank == 0):
+            if (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
                 #extract sample id and data tensors
                 sample_idx = np.random.randint(low=0, high=label.shape[0])
-                plot_input = inputs.detach()[sample_idx,...].cpu().numpy()
-                plot_prediction = outputs.detach()[sample_idx,...].cpu().numpy()
+                plot_input = inputs.detach()[sample_idx, 0,...].cpu().numpy()
+                plot_prediction = predictions.detach()[sample_idx,...].cpu().numpy()
                 plot_label = label.detach()[sample_idx,...].cpu().numpy()
                 
                 #create filenames
-                outputfile = os.path.basename(filename[sample_idx]).replace("data-", "plot-").replace(".h5", ".png")
+                outputfile = os.path.basename(filename[sample_idx]).replace("data-", "training-").replace(".h5", ".png")
                 outputfile = os.path.join(plot_dir, outputfile)
                 
                 #plot
                 viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
                 
-                sys.exit(1)
-                #viz.plot(os.path.join(predict_dir, os.path.splitext(os.path.basename(h5base))[0]),
-                #         "Predicted",
-                #         np.squeeze(datatens[i,0,...]),
-                #         np.squeeze(predtens[i,...]),
-                #         year=year,
-                #         month=month,
-                #         day=day,
-                #         hour=hour)
-                
-                #viz.plot(os.path.join(truth_dir, os.path.splitext(os.path.basename(h5base))[0]),
-                #         "Ground truth",
-                #         np.squeeze(datatens[i,0,...]),
-                #         np.squeeze(labeltens[i,...]),
-                #         year=year,
-                #         month=month,
-                #         day=day,
-                #         hour=hour)
-                
-            #    #log if requested
-            #    if pargs.logging_frequency > 0:
-            #        img = Image.open(filename)
-            #        wandb.log({"Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth vs. Difference")]}, step = step)
+                #log if requested
+                if pargs.logging_frequency > 0:
+                    img = Image.open(outputfile)
+                    wandb.log({"Training Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
             
             
             #log if requested
@@ -341,6 +326,8 @@ def main(pargs):
                 
                     # iterate over validation sample
                     step_val = 0
+                    # only print once per eval at most
+                    visualized = False
                     for inputs_val, label_val, filename_val in validation_loader:
                         
                         #send to device
@@ -361,6 +348,27 @@ def main(pargs):
                         predictions_val = torch.max(outputs_val, 1)[1]
                         iou_val = utils.compute_score(predictions_val, label_val, device_id=device, num_classes=3)
                         iou_sum_val += iou_val
+
+                        # Visualize
+                        if (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
+                            #extract sample id and data tensors
+                            sample_idx = np.random.randint(low=0, high=label_val.shape[0])
+                            plot_input = inputs_val.detach()[sample_idx, 0,...].cpu().numpy()
+                            plot_prediction = predictions_val.detach()[sample_idx,...].cpu().numpy()
+                            plot_label = label_val.detach()[sample_idx,...].cpu().numpy()
+                            
+                            #create filenames
+                            outputfile = os.path.basename(filename[sample_idx]).replace("data-", "validation-").replace(".h5", ".png")
+                            outputfile = os.path.join(plot_dir, outputfile)
+                            
+                            #plot
+                            viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
+                            visualized = True
+                            
+                            #log if requested
+                            if pargs.logging_frequency > 0:
+                                img = Image.open(outputfile)
+                                wandb.log({"Validation Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
                         
                         #increase eval step counter
                         step_val += 1
@@ -437,7 +445,8 @@ if __name__ == "__main__":
     AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
     AP.add_argument("--max_validation_steps", type=int, default=None, help="Number of validation steps to perform. Helps when validation takes a long time")
     AP.add_argument("--logging_frequency", type=int, default=100, help="Frequency with which the training progress is logged. If not positive, logging will be disabled")
-    AP.add_argument("--visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during training")
+    AP.add_argument("--training_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during training")
+    AP.add_argument("--validation_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during validation")
     AP.add_argument("--local_batch_size", type=int, default=1, help="Number of samples per local minibatch")
     AP.add_argument("--channels", type=int, nargs='+', default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], help="Channels used in input")
     AP.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "LAMB"], help="Optimizer to use.")

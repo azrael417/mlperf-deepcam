@@ -20,23 +20,18 @@ class CamVisualizer(object):
     
     def __init__(self):
         
-        # Create figre
-        numrows = 2
-        numcols = 1
-        fig, axvec = plt.figure(figsize=(100*numrows,20*numcols), nrows=numrows, ncols=numcols)
-        
-        lats = np.linspace(-90,90,768)
-        longs = np.linspace(-180,180,1152)
-        self.my_map = (Basemap(projection='gall', llcrnrlat=min(lats), 
-                             llcrnrlon=min(longs), urcrnrlat=max(lats), 
-                             urcrnrlon=max(longs), resolution = 'i' ax=axvec[0]),
-                       Basemap(projection='gall', llcrnrlat=min(lats), 
-                             llcrnrlon=min(longs), urcrnrlat=max(lats), 
-                             urcrnrlon=max(longs), resolution = 'i', ax=axvec[1]))
+        # Create figre        
+        self.lats = np.linspace(-90,90,768)
+        self.longs = np.linspace(-180,180,1152)
         
         #set up meshgrid
-        self.xx, self.yy = np.meshgrid(longs, lats)
-       
+        self.xx, self.yy = np.meshgrid(self.longs, self.lats)
+
+        self.my_map = Basemap(projection='gall', llcrnrlat=min(self.lats),
+                              llcrnrlon=min(self.longs), urcrnrlat=max(self.lats),
+                              urcrnrlon=max(self.longs), resolution = 'i')
+        self.x_map, self.y_map = self.my_map(self.xx, self.yy)
+        
         # Create new colormap
         colors_1 = [(252-32*i,252-32*i,252-32*i,i*1/16) for i in np.linspace(0, 1, 32)]
         colors_2 = [(220-60*i,220-60*i,220,i*1/16+1/16) for i in np.linspace(0, 1, 32)]
@@ -46,73 +41,74 @@ class CamVisualizer(object):
 
         colors = list(map(lambda c: (c[0]/256,c[1]/256,c[2]/256,c[3]), colors))
         self.my_cmap = mpl.colors.LinearSegmentedColormap.from_list('mycmap', colors, N=64)
-
-        #print once so that everything is set up
-        self.my_map[0].bluemarble()
-        self.my_map[0].drawcoastlines()
-        self.my_map[1].bluemarble()
-        self.my_map[1].drawcoastlines()
         
     
     def plot(self, input_filename, output_filename, data, prediction, label):
             
         # dissect filename
         token = os.path.basename(input_filename).replace(".h5","").split("-")
-        year = token[2]
-        month = token[3]
-        day = token[4]
-        hour = token[5]
-        stream = token[6]
+        year = token[1]
+        month = token[2]
+        day = token[3]
+        hour = token[4]
+        stream = token[5]
+        
         # Get data
-        tstart = time.time()
         data = np.roll(data,[0,int(1152/2)])
+
+        # Get predictions
+        prediction = np.roll(prediction, [0,int(1152/2)])
+        p1 = (prediction == 1)
+        p2 = (prediction == 2)
         
         # Get labels
         label = np.roll(label, [0,int(1152/2)])
         l1 = (label == 1)
         l2 = (label == 2)
-        print("extract data: {}".format(time.time() - tstart))
-
-        #pdf
-        #with PdfPages(filename+'.pdf') as pdf:
         
         #get figure
         numrows = 2
         numcols = 1
-        fig, axvec = plt.figure(figsize=(100*numrows,20*numcols), nrows=numrows, ncols=numcols)
+        fig, axvec = plt.subplots(figsize=(100*numrows,20*numcols), nrows=numrows, ncols=numcols)
+
+        #do label and predictions
+        for idx,ax in enumerate(axvec):
         
-        #label
-        ax = axvec[0]
+            #draw stuff
+            self.my_map.bluemarble(ax=ax)
+            self.my_map.drawcoastlines(ax=ax)
         
-        #draw stuff
-        self.my_map[0].bluemarble()
-        self.my_map[0].drawcoastlines()
+            # Plot data
+            self.my_map.contourf(self.x_map, self.y_map, data, 128, vmin=0., vmax=1.,
+                                 cmap=self.my_cmap, levels=np.arange(0., 1., 0.02), ax=ax)
         
-        # Plot data
-        self.x_map, self.y_map = self.my_map[0](self.xx,self.yy)
-        self.my_map[0].contourf(self.x_map, self.y_map, data, 128, vmin=0, vmax=89, cmap=self.my_cmap, levels=np.arange(0,89,2))
+            # Plot colorbar
+            #cbar = self.my_map.colorbar(ticks=np.arange(0.,1.,0.1), ax=ax)
+            #cbar.ax.set_ylabel('Integrated Water Vapor kg $m^{-2}$', size=32)
+            #cbar.ax.set_yticklabels(cbar.ax.get_yticklabels(), fontsize=28)
         
-        # Plot colorbar
-        cbar = self.my_map[0].colorbar(ticks=np.arange(0,89,11))
-        cbar.ax.set_ylabel('Integrated Water Vapor kg $m^{-2}$',size=32)
-        cbar.ax.set_yticklabels(cbar.ax.get_yticklabels(), fontsize=28)
+            # Draw Tropical Cyclones & Atmospheric Rivers
+            if idx == 0:
+                tc_contour = self.my_map.contour(self.x_map, self.y_map, p1, [0.5], linewidths=3, colors='orange', alpha=0.9, ax=ax)
+                ar_contour = self.my_map.contour(self.x_map, self.y_map, p2, [0.5], linewidths=3, colors='magenta', alpha=0.9, ax=ax)
+            else:
+                tc_contour = self.my_map.contour(self.x_map, self.y_map, l1, [0.5], linewidths=3, colors='orange', alpha=0.9, ax=ax)
+                ar_contour = self.my_map.contour(self.x_map, self.y_map, l2, [0.5], linewidths=3, colors='magenta', alpha=0.9, ax=ax)
         
-        # Draw Tropical Cyclones & Atmospheric Rivers
-        tc_contour = self.my_map[0].contour(self.x_map, self.y_map, l1, [0.5], linewidths=3, colors='orange')
-        ar_contour = self.my_map[0].contour(self.x_map, self.y_map, l2, [0.5], linewidths=3, colors='magenta')
-        
-        self.my_map[0].drawmeridians(np.arange(-180, 180, 60), labels=[0,0,0,1])
-        self.my_map[0].drawparallels(np.arange(-90, 90, 30), labels =[1,0,0,0])
+            self.my_map.drawmeridians(np.arange(-180, 180, 60), labels=[0,0,0,1], ax=ax)
+            self.my_map.drawparallels(np.arange(-90, 90, 30), labels =[1,0,0,0], ax=ax)
     
-        # Plot legend and title
-        lines = [tc_contour.collections[0], ar_contour.collections[0]]
-        labels = ['Tropical Cyclone', "Atmospheric River"]
-        ax.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
-        ax.set_title("Extreme Weather Patterns {:04d}-{:02d}-{:02d}".format(int(year), int(month), int(day)), fontdict={'fontsize': 44})
+            # Plot legend and title
+            lines = [tc_contour.collections[0], ar_contour.collections[0]]
+            labels = ['Tropical Cyclone', "Atmospheric River"]
+            ax.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
+
+            if idx == 0:
+                ax.set_title("Extreme Weather Patterns {:04d}-{:02d}-{:02d} (stream {:02d})".format(int(year), int(month), int(day), int(stream)), fontdict={'fontsize': 36})
         
         #pdf.savefig(bbox_inches='tight')
         #mask_ex = plt.gcf()
         #mask_ex.savefig(filename, bbox_inches='tight')
         plt.gcf().savefig(output_filename, format="PNG", bbox_inches='tight')
         plt.clf()
-        
+        plt.close(fig)
