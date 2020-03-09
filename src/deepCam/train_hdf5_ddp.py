@@ -24,7 +24,7 @@ from architecture import deeplab_xception
 from warmup_scheduler import GradualWarmupScheduler
 
 #vis stuff
-from PIL import Image
+from utils import visualizer as vizc
 
 #DDP
 import torch.distributed as dist
@@ -83,9 +83,12 @@ def main(pargs):
     #set up directories
     root_dir = os.path.join(pargs.data_dir_prefix)
     output_dir = pargs.output_dir
+    plot_dir = os.path.join(output_dir, "plots")
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
+        if pargs.visualization_frequency > 0 and not os.path.isdir(plot_dir):
+            os.makedirs(plot_dir)
     
     # Setup WandB
     if (pargs.logging_frequency > 0) and (comm_rank == 0):
@@ -214,7 +217,11 @@ def main(pargs):
                                comm_size = comm_size,
                                comm_rank = comm_rank)
     validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
-        
+
+    #for visualization
+    if pargs.visualization_frequency > 0:
+        viz = vizc.CamVisualizer()   
+    
     # Train network
     if (pargs.logging_frequency > 0) and (comm_rank == 0):
         wandb.watch(net)
@@ -273,19 +280,46 @@ def main(pargs):
                                                                                    iou_avg.item() / float(comm_size),
                                                                                    current_lr), 0)
 
-            ##visualize if requested
-            #if (step % pargs.visualization_frequency == 0) and (hvd.rank() == 0):
-            #    sample_idx = np.random.randint(low=0, high=label.shape[0])
-            #    filename = os.path.join(output_dir, "plot_step{}_sampleid{}.png".format(step,sample_idx))
-            #    prediction = outputs.detach()[sample_idx,...].cpu().numpy()
-            #    groundtruth = label.detach()[sample_idx,...].cpu().numpy()
-            #    ev.visualize_prediction(filename, prediction, groundtruth)
-            #    
+            #visualize if requested
+            if (step % pargs.visualization_frequency == 0) and (comm.rank() == 0):
+                sample_idx = np.random.randint(low=0, high=label.shape[0])
+                outputfile = filename[sample_idx]
+                plot_input = inputs.detach()[sample_idx,...].cpu().numpy()
+                plot_prediction = outputs.detach()[sample_idx,...].cpu().numpy()
+                plot_groundtruth = label.detach()[sample_idx,...].cpu().numpy()
+
+                printr("visualizing {}".format(outputfile), 0)
+                sys.exit(1)
+                #h5path = source[i]
+                #h5base = os.path.basename(h5path)
+                #year = h5base[5:9]
+                #month = h5base[10:12]
+                #day = h5base[13:15]
+                #hour = h5base[16:18]
+                    
+                #viz.plot(os.path.join(predict_dir, os.path.splitext(os.path.basename(h5base))[0]),
+                #         "Predicted",
+                #         np.squeeze(datatens[i,0,...]),
+                #         np.squeeze(predtens[i,...]),
+                #         year=year,
+                #         month=month,
+                #         day=day,
+                #         hour=hour)
+                
+                #viz.plot(os.path.join(truth_dir, os.path.splitext(os.path.basename(h5base))[0]),
+                #         "Ground truth",
+                #         np.squeeze(datatens[i,0,...]),
+                #         np.squeeze(labeltens[i,...]),
+                #         year=year,
+                #         month=month,
+                #         day=day,
+                #         hour=hour)
+                
             #    #log if requested
             #    if pargs.logging_frequency > 0:
             #        img = Image.open(filename)
             #        wandb.log({"Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth vs. Difference")]}, step = step)
-            #
+            
             
             #log if requested
             if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
