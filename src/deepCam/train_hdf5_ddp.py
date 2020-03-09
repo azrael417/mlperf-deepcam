@@ -281,22 +281,21 @@ def main(pargs):
                                                                                    current_lr), 0)
 
             #visualize if requested
-            if (step % pargs.visualization_frequency == 0) and (comm.rank() == 0):
+            if (step % pargs.visualization_frequency == 0) and (comm_rank == 0):
+                #extract sample id and data tensors
                 sample_idx = np.random.randint(low=0, high=label.shape[0])
-                outputfile = filename[sample_idx]
                 plot_input = inputs.detach()[sample_idx,...].cpu().numpy()
                 plot_prediction = outputs.detach()[sample_idx,...].cpu().numpy()
-                plot_groundtruth = label.detach()[sample_idx,...].cpu().numpy()
-
-                printr("visualizing {}".format(outputfile), 0)
+                plot_label = label.detach()[sample_idx,...].cpu().numpy()
+                
+                #create filenames
+                outputfile = os.path.basename(filename[sample_idx]).replace("data-", "plot-").replace(".h5", ".png")
+                outputfile = os.path.join(plot_dir, outputfile)
+                
+                #plot
+                viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
+                
                 sys.exit(1)
-                #h5path = source[i]
-                #h5base = os.path.basename(h5path)
-                #year = h5base[5:9]
-                #month = h5base[10:12]
-                #day = h5base[13:15]
-                #hour = h5base[16:18]
-                    
                 #viz.plot(os.path.join(predict_dir, os.path.splitext(os.path.basename(h5base))[0]),
                 #         "Predicted",
                 #         np.squeeze(datatens[i,0,...]),
