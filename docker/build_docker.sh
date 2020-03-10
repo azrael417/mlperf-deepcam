@@ -4,7 +4,7 @@
 #docker login -u tkurth gitlab-master.nvidia.com:5005
 
 #nvidia-docker build -t tkurth/pytorch-bias_gan:latest .
-nvidia-docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug .
+nvidia-docker build --no-cache -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug .
 docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug
 
 #tag for NERSC registry
