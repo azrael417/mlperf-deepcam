@@ -98,13 +98,15 @@ def main(pargs):
     if (pargs.logging_frequency > 0) and (comm_rank == 0):
         # get wandb api token
         with open(os.path.join(pargs.wandb_certdir, ".wandbirc")) as f:
-            wbtoken = f.readlines()[0].replace("\n","")
+            token = f.readlines()[0].replace("\n","").split()
+            wblogin = token[0]
+            wbtoken = token[1]
         # log in: that call can be blocking, it should be quick
         sp.call(["wandb", "login", wbtoken])
         
         #init db and get config
         resume_flag = pargs.run_tag if pargs.resume_logging else False
-        wandb.init(project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
+        wandb.init(entity = wblogin, project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
         config = wandb.config
     
         #set general parameters
