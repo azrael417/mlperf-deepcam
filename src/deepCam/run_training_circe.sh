@@ -8,10 +8,13 @@ rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
 #parameters
-run_tag="deepcam_prediction_run5_nnodes${SLURM_NNODES}-2"
+run_tag="deepcam_prediction_run5_nnodes${SLURM_NNODES}-3"
 data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
 checkpoint_file="${output_dir}/classifier_step_17200.cpt"
+
+#create directories
+mkdir -p ${output_dir}
 
 #run training
 srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rankspernode} )) --cpu_bind=cores \
@@ -24,8 +27,6 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --data_dir_prefix ${data_dir_prefix} \
        --output_dir ${output_dir} \
        --model_prefix "classifier" \
-       --checkpoint ${checkpoint_file} \
-       --resume_logging \
        --optimizer "LAMB" \
        --start_lr 1e-3 \
        --lr_schedule type="multistep",milestones="15000 25000",decay_rate="0.1" \
@@ -33,8 +34,10 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --lr_warmup_factor $(( ${SLURM_NNODES} / 8 )) \
        --weight_decay 1e-2 \
        --validation_frequency 200 \
+       --training_visualization_frequency 200 \
+       --validation_visualization_frequency 40 \
        --max_validation_steps 50 \
-       --logging_frequency 50 \
+       --logging_frequency 0 \
        --save_frequency 400 \
        --max_epochs 200 \
        --amp_opt_level O1 \
