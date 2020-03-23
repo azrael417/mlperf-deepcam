@@ -32,6 +32,7 @@ srun -u -N ${SLURM_NNODES} -n ${totalranks} -c $(( 256 / ${rankspernode} )) --cp
      --run_tag ${run_tag} \
      --data_dir_prefix ${data_dir_prefix} \
      --output_dir ${output_dir} \
+     --max_inter_threads 0 \
      --model_prefix "classifier" \
      --optimizer "AdamW" \
      --start_lr 1e-3 \
