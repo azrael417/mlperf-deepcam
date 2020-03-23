@@ -33,7 +33,7 @@ srun -N ${SLURM_NNODES} -n ${totalranks} -c $(( 256 / ${rankspernode} )) --cpu_b
      --data_dir_prefix ${data_dir_prefix} \
      --output_dir ${output_dir} \
      --model_prefix "classifier" \
-     --optimizer "LAMB" \
+     --optimizer "AdamW" \
      --start_lr 1e-3 \
      --lr_schedule type="multistep",milestones="15000 25000",decay_rate="0.1" \
      --lr_warmup_steps 0 \

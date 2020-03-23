@@ -158,7 +158,7 @@ def main(pargs):
     elif have_apex and (pargs.optimizer == "LAMB"):
         optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     else:
-        raise ValueError("Error, optimizer {} not supported".format(pargs.optimizer))
+        raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
 
     if have_apex:
         #wrap model and opt into amp
