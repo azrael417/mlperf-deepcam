@@ -9,7 +9,7 @@
 #load stuff
 conda activate mlperf_deepcam
 module load pytorch/v1.4.0
-export PROJ_LIB=/global/common/cori_cle7/software/python/3.7-anaconda-2019.10/share/proj
+export PROJ_LIB=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/share/basemap
 export PYTHONPATH=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/lib/python3.7/site-packages:${PYTHONPATH}
 
 #ranks per node
