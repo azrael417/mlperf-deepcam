@@ -15,7 +15,7 @@ class CamDataset(Dataset):
     def init_reader(self):
         #shuffle
         if self.shuffle:
-            np.random.shuffle(self.all_files)
+            self.rng.shuffle(self.all_files)
             
         #split
         num_files_local = len(self.all_files) // self.comm_size
@@ -38,7 +38,7 @@ class CamDataset(Dataset):
         self.comm_rank = comm_rank
         
         #split list of files
-        np.random.seed(seed)
+        self.rng = np.random.RandomState(seed)
         
         #init reader
         self.init_reader()
