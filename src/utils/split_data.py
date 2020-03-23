@@ -2,8 +2,10 @@ import os
 import numpy as np
 
 #filedir="/gpfs/fs1/tkurth/cam5_dataset/All-Hist/all"
-inputdir="/data/all"
-outputdir="/data"
+inputdir="/global/cscratch1/sd/tkurth/data/cam5_data/All-Hist/all"
+outputdir="/global/cscratch1/sd/tkurth/data/cam5_data/All-Hist"
+#inputdir="/data/all"
+#outputdir="/data"
 train_fraction=0.8
 validation_fraction=0.1
 test_fraction=0.1

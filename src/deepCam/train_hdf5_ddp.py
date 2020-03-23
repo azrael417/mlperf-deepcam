@@ -153,6 +153,8 @@ def main(pargs):
     optimizer = None
     if pargs.optimizer == "Adam":
         optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+    elif pargs.optimizer == "AdamW":
+        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     elif have_apex and (pargs.optimizer == "LAMB"):
         optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     else:
@@ -451,7 +453,7 @@ if __name__ == "__main__":
     AP.add_argument("--validation_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during validation")
     AP.add_argument("--local_batch_size", type=int, default=1, help="Number of samples per local minibatch")
     AP.add_argument("--channels", type=int, nargs='+', default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], help="Channels used in input")
-    AP.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "LAMB"], help="Optimizer to use.")
+    AP.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "AdamW", "LAMB"], help="Optimizer to use (LAMB requires APEX support).")
     AP.add_argument("--start_lr", type=float, default=1e-3, help="Start LR")
     AP.add_argument("--adam_eps", type=float, default=1e-8, help="Adam Epsilon")
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
