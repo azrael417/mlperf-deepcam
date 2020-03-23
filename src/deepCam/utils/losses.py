@@ -10,7 +10,7 @@ def fp_loss(logit, target, weight, fpw_1=0, fpw_2=0):
     target = target.squeeze(1)
     
     #later should use cuda
-    criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(weight)).float().cuda(), reduction='none')
+    criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(weight)).float().to(target.device), reduction='none')
     losses = criterion(logit, target.long())
     
     preds = torch.max(logit, 1)[1]

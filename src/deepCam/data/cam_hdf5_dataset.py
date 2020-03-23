@@ -4,7 +4,6 @@ import numpy as np
 from time import sleep
 
 import torch
-from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler

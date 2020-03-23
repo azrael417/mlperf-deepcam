@@ -65,7 +65,7 @@ def main(pargs):
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
-
+    
     #set seed
     seed = 333
     
@@ -226,6 +226,7 @@ def main(pargs):
                                comm_rank = comm_rank)
     validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
 
+    
     #for visualization
     if visualize:
         viz = vizc.CamVisualizer()   
