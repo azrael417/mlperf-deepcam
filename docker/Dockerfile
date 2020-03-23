@@ -17,15 +17,15 @@ RUN pip install wandb
 RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
 #copy additional stuff
-COPY ../src/deepCam /opt/deepCam
-COPY ../src/utils /opt/utils
+COPY src/deepCam /opt/deepCam
+COPY src/utils /opt/utils
 
 #init empty git repo so that wandb works
 RUN cd /opt/deepCam && git init
 
 #copy cert:
 RUN mkdir -p /opt/certs
-COPY ../no-git/wandb_cert.key /opt/certs/.wandbirc
+COPY no-git/wandb_cert.key /opt/certs/.wandbirc
 
 #create additional folders for mapping data in
 RUN mkdir -p /data
