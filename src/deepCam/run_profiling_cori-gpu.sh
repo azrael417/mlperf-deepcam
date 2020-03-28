@@ -1,16 +1,12 @@
 #!/bin/bash
 #SBATCH -A dasrepo
-#SBATCH -J train_cam5
+#SBATCH -J profile_cam5
 #SBATCH -t 08:00:00
-#SBATCH -C knl
+#SBATCH -C gpu
 #SBATCH -q regular
-#SBATCH -S 2
-
-#load stuff
-conda activate mlperf_deepcam
-module load pytorch/v1.4.0
-export PROJ_LIB=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/share/basemap
-export PYTHONPATH=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/lib/python3.7/site-packages:${PYTHONPATH}
+#SBATCH --exclusive
+#SBATCH --gres=gpu:8
+#SBATCH --image=registry.services.nersc.gov/tkurth/mlperf-deepcam:profile
 
 #ranks per node
 rankspernode=1
