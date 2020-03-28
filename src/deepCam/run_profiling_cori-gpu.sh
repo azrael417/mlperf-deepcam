@@ -7,6 +7,7 @@
 #SBATCH --exclusive
 #SBATCH --gres=gpu:8
 #SBATCH --image=registry.services.nersc.gov/tkurth/mlperf-deepcam:profile
+#SBATCH --volume="/global/cscratch1/sd/tkurth/data/cam5_data/All-Hist:/data"
 
 #ranks per node
 rankspernode=1
@@ -15,7 +16,7 @@ totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 #parameters
 run_tag="deepcam_prediction_run1-cori"
 data_dir_prefix="/global/cscratch1/sd/tkurth/data/cam5_data/All-Hist"
-output_dir="/global/cscratch1/sd/tkurth/data/cam5_runs/${run_tag}"
+output_dir="./${run_tag}"
 
 #create files
 mkdir -p ${output_dir}
