@@ -26,7 +26,7 @@ mkdir -p ${output_dir}
 touch ${output_dir}/train.out
 
 #run training
-srun -u -N ${SLURM_NNODES} -n ${totalranks} -c $(( 256 / ${rankspernode} )) --cpu_bind=cores \
+srun -u -N ${SLURM_NNODES} -n ${totalranks} -c $(( 40 / ${rankspernode} )) --cpu_bind=cores \
      python train_hdf5_ddp.py \
      --wireup_method "mpi" \
      --run_tag ${run_tag} \
