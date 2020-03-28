@@ -1,8 +1,5 @@
 #!/bin/bash
 
-#login
-#docker login -u tkurth gitlab-master.nvidia.com:5005
-
 #we need to step out to expand the build context
 cd ..
 

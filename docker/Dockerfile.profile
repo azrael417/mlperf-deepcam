@@ -1,5 +1,5 @@
 #FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:19.10-py3-devel
-FROM nvcr.io/nvidia/pytorch:20.01-py3
+FROM nvcr.io/nvidia/pytorch:20.03-py3
 #FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.01-py3
 
 #Install conda prereqs

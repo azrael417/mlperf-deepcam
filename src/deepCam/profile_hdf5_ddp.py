@@ -143,10 +143,10 @@ def main(pargs):
     if pargs.lr_schedule:
         scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
-    if pargs.lr_warmup_steps > 0:
-        scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
-    else:
-        scheduler = scheduler_after
+        if pargs.lr_warmup_steps > 0:
+            scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
+        else:
+            scheduler = scheduler_after
 
     # Set up the data feeder
     # train

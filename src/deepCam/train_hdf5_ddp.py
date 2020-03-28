@@ -186,10 +186,10 @@ def main(pargs):
     if pargs.lr_schedule:
         scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
-    if pargs.lr_warmup_steps > 0:
-        scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
-    else:
-        scheduler = scheduler_after
+        if pargs.lr_warmup_steps > 0:
+            scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
+        else:
+            scheduler = scheduler_after
         
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
@@ -444,7 +444,6 @@ if __name__ == "__main__":
     AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
     AP.add_argument("--data_dir_prefix", type=str, default='/', help="prefix to data dir")
     AP.add_argument("--max_inter_threads", type=int, default=1, help="Maximum number of concurrent readers")
-    #AP.add_argument("--max_intra_threads", type=int, default=8, help="Maximum degree of parallelism within reader")
     AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
     AP.add_argument("--save_frequency", type=int, default=100, help="Frequency with which the model is saved in number of steps")
     AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
