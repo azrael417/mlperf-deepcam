@@ -14,6 +14,10 @@ def compute_score(prediction, gt, num_classes, device_id, type="iou", weights=No
     fp = [0] * num_classes
     fn = [0] * num_classes
     iou = [0.] * num_classes
+
+    #cast type for GT tensor. not needed for new
+    #pytorch but much cleaner
+    gt = gt.type(torch.long)
     
     equal = (prediction == gt)
     not_equal = (prediction != gt)
