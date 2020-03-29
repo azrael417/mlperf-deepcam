@@ -55,7 +55,7 @@ def printr(msg, rank=0):
 class Profile():
     
     def __init__(self, params, flag, steps):
-        self.flag == flag
+        self.flag = flag
         self.tflag = params.profile
         self.num_warmup_steps = params.num_warmup_steps
         self.steps = steps
@@ -141,12 +141,7 @@ def main(pargs):
 
     #select scheduler
     if pargs.lr_schedule:
-        scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
-
-        if pargs.lr_warmup_steps > 0:
-            scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
-        else:
-            scheduler = scheduler_after
+        scheduler = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = 0)
 
     # Set up the data feeder
     # train
@@ -160,17 +155,6 @@ def main(pargs):
                                comm_rank = comm_rank)
     train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
     
-    # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
-    validation_dir = os.path.join(root_dir, "validation")
-    validation_set = cam.CamDataset(validation_dir, 
-                               statsfile = os.path.join(root_dir, 'stats.h5'),
-                               channels = pargs.channels,
-                               shuffle = (pargs.max_validation_steps is not None),
-                               preprocess = True,
-                               comm_size = comm_size,
-                               comm_rank = comm_rank)
-    validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
-
         
     printr('{:14.4f} REPORT: starting warmup'.format(dt.datetime.now().timestamp()), 0)
     step = 0
@@ -186,7 +170,8 @@ def main(pargs):
                 printr('{:14.4f} REPORT: starting profiling'.format(dt.datetime.now().timestamp()), 0)
             
             # Forward pass
-            with Profile(params, "Forward", step):
+            with Profile(pargs, "Forward", step):
+                
                 #send data to device
                 inputs = inputs.to(device)
                 label = label.to(device)
@@ -196,7 +181,8 @@ def main(pargs):
             
                 # Compute loss
                 loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
-            
+
+                
             # allreduce for loss
             loss_avg = loss.detach()
             dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
@@ -208,24 +194,35 @@ def main(pargs):
             dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
             
             # Backprop
-            with Profile(params, "Backward", step):
+            with Profile(pargs, "Backward", step):
+
+                # reset grads
                 optimizer.zero_grad()
+                
+                # compute grads
                 if have_apex:
                     with amp.scale_loss(loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                 else:
                     loss.backward()
-            
+                    
+                
             # weight update
-            with Profile(params, "Optimizer", step):
+            with Profile(pargs, "Optimizer", step):
+                # update weights
                 optimizer.step()
 
+                
             #step counter
             step += 1
 
             #are we done?
             if step >= (pargs.num_warmup_steps + pargs.num_profile_steps):
                 break
+
+        #need to check here too
+        if step >= (pargs.num_warmup_steps + pargs.num_profile_steps):
+            break
 
     printr('{:14.4f} REPORT: finishing profiling'.format(dt.datetime.now().timestamp()), 0)
     
