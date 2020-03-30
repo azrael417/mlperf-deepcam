@@ -70,6 +70,19 @@ def init(method):
         dist.init_process_group(backend = "nccl",
                                 rank = rank,
                                 world_size = world_size)
+
+    elif method == "nccl-slurm-pmi":
+        rank = int(os.getenv("PMI_RANK"))
+        world_size = int(os.getenv("SLURM_NTASKS"))
+        address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
+        port = "29500"
+        os.environ["MASTER_ADDR"] = address
+        os.environ["MASTER_PORT"] = port
+                                                
+        #init DDP
+        dist.init_process_group(backend = "nccl",
+                                rank = rank,
+                                world_size = world_size)
         
     elif method == "mpi":
         #init DDP
