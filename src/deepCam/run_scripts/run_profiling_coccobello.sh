@@ -25,7 +25,8 @@ touch ${output_dir}/profile.out
 
 #metrics
 ### Tensor Core utilization
-metrics="sm__inst_executed_pipe_tensor_op_hmma.avg.pct_of_peak_sustained_active "
+metrics="smsp__inst_executed_pipe_tensor_op_hmma.sum"
+#"sm__inst_executed_pipe_tensor_op_hmma.avg.pct_of_peak_sustained_active "
 
 ### FLOP
 # SP
@@ -83,7 +84,7 @@ count=0
 for metric in ${metrics}; do
 
     #assemble profile string
-    profilecmd= #"${profilebase} --metrics ${metric} -o profile_${metric}"
+    profilecmd="${profilebase} --metrics ${metric} -o ${output_dir}/profile_${metric}"
 
     #run the profiling
     mpirun -np ${totalranks} ${mpioptions} \
