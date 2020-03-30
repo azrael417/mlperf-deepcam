@@ -1,7 +1,11 @@
-#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:19.10-py3-devel
-#FROM nvcr.io/nvidia/pytorch:20.03-py3
-FROM nvcr.io/nvidia/pytorch:19.07-py3
-#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.01-py3
+FROM nvcr.io/nvidia/pytorch:20.03-py3
+
+#Install newer version of nsight
+COPY sys/nsight.tgz /opt
+RUN cd /opt && \
+    tar -xzf nsight.tgz && rm -rf nsight.tgz
+ENV PATH /opt/NsightCompute:${PATH}
+ENV LD_LIBRARY_PATH /opt/conda/lib/python3.6/site-packages/torch/lib:${LD_LIBRARY_PATH}
 
 #Install conda prereqs
 RUN conda install h5py

@@ -15,4 +15,4 @@ docker push registry.services.nersc.gov/tkurth/mlperf-deepcam:debug
 
 #profiling container
 nvidia-docker build -t registry.services.nersc.gov/tkurth/mlperf-deepcam:profile -f docker/Dockerfile.profile .
-docker push registry.services.nersc.gov/tkurth/mlperf-deepcam:profile
+#docker push registry.services.nersc.gov/tkurth/mlperf-deepcam:profile

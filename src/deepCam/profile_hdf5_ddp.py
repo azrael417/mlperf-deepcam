@@ -139,9 +139,9 @@ def main(pargs):
     #make model distributed
     net = DDP(net)
 
-    ##select scheduler
-    #if pargs.lr_schedule:
-    #    scheduler = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = 0)
+    #select scheduler
+    if pargs.lr_schedule:
+        scheduler = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = 0)
 
     # Set up the data feeder
     # train
@@ -158,7 +158,7 @@ def main(pargs):
         
     printr('{:14.4f} REPORT: starting warmup'.format(dt.datetime.now().timestamp()), 0)
     step = 0
-    #current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
+    current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
     current_lr = pargs.start_lr
     net.train()
     while True:
@@ -213,6 +213,10 @@ def main(pargs):
                 # update weights
                 optimizer.step()
 
+            # advance the scheduler
+            if pargs.lr_schedule:
+                current_lr = scheduler.get_last_lr()[0]
+                scheduler.step()
                 
             #step counter
             step += 1

@@ -50,8 +50,8 @@ def init(method):
         port = "29500"
         os.environ["MASTER_ADDR"] = address
         os.environ["MASTER_PORT"] = port
-        rank = os.getenv('OMPI_COMM_WORLD_RANK',0)
-        world_size = os.getenv("OMPI_COMM_WORLD_SIZE",0)
+        rank = int(os.getenv('OMPI_COMM_WORLD_RANK',0))
+        world_size = int(os.getenv("OMPI_COMM_WORLD_SIZE",0))
         
         #init DDP
         dist.init_process_group(backend = "nccl",
@@ -59,8 +59,8 @@ def init(method):
                                 world_size = world_size)
         
     elif method == "nccl-slurm":
-        rank = os.getenv("PMIX_RANK")
-        world_size = os.getenv("SLURM_NTASKS")
+        rank = int(os.getenv("PMIX_RANK"))
+        world_size = int(os.getenv("SLURM_NTASKS"))
         address = os.getenv("SLURM_LAUNCH_NODE_IPADDR")
         port = "29500"
         os.environ["MASTER_ADDR"] = address

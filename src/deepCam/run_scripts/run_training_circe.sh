@@ -21,7 +21,7 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
      --container-workdir /opt/deepCam \
      --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
      --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
-     python train_hdf5_ddp.py \
+     python ../train_hdf5_ddp.py \
        --wireup_method "nccl-slurm" \
        --run_tag ${run_tag} \
        --data_dir_prefix ${data_dir_prefix} \
