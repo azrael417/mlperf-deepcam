@@ -16,14 +16,14 @@ totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 #parameters
 run_tag="deepcam_prediction_run1-cori"
 data_dir_prefix="/data"
-output_dir="${data_dir_prefix}/profiles/${run_tag}"
+output_dir="./runs/profiles/${run_tag}"
 
 #profile base
-profilebase="$(which nv-nsight-cu-cli) --profile-from-start off -f"
+profilebase="/usr/local/cuda/bin/nv-nsight-cu-cli --profile-from-start off -f"
 
 #create files
 mkdir -p ${output_dir}
-touch ${output_dir}/train.out
+touch ${output_dir}/profile.out
 
 #metrics
 ### Tensor Core utilization
@@ -90,20 +90,17 @@ for metric in ${metrics}; do
     srun -u -N ${SLURM_NNODES} -n ${totalranks} -c $(( 40 / ${rankspernode} )) --cpu_bind=cores \
 	 shifter \
 	 ${profilecmd} \
-	 $(which python) profile_hdf5_ddp.py \
-	 --wireup_method "mpi" \
+	 /opt/conda/bin/python ../profile_hdf5_ddp.py \
+	 --wireup_method "nccl-slurm-pmi" \
 	 --run_tag ${run_tag} \
 	 --data_dir_prefix ${data_dir_prefix} \
 	 --output_dir ${output_dir} \
 	 --max_inter_threads 0 \
-	 --model_prefix "classifier" \
 	 --optimizer "Adam" \
 	 --start_lr 1e-3 \
 	 --num_warmup_steps 5 \
 	 --num_profile_steps 1 \
 	 --profile "Forward" \
-	 --lr_warmup_steps 0 \
-	 --lr_warmup_factor $(( ${SLURM_NNODES} / 8 )) \
 	 --weight_decay 1e-2 \
 	 --amp_opt_level O1 \
 	 --local_batch_size 2 |& tee -a ${output_dir}/profile.out
