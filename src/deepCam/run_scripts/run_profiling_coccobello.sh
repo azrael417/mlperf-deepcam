@@ -25,8 +25,8 @@ touch ${output_dir}/profile.out
 
 #metrics
 ### Tensor Core utilization
-metrics="smsp__inst_executed_pipe_tensor_op_hmma.sum"
-#"sm__inst_executed_pipe_tensor_op_hmma.avg.pct_of_peak_sustained_active "
+metrics="smsp__inst_executed_pipe_tensor_op_hmma.sum \
+sm__inst_executed_pipe_tensor_op_hmma.avg.pct_of_peak_sustained_active "
 
 ### FLOP
 # SP
@@ -76,7 +76,7 @@ dram__sectors_write.sum "
 
 ### PCI/NVLINK transactions
 metrics+="lts__t_sectors_aperture_sysmem_op_read.sum \
-lts__t_sectors_aperture_sysmem_op_read.sum"
+lts__t_sectors_aperture_sysmem_op_read.sum "
 
 
 #run training
@@ -84,8 +84,15 @@ count=0
 for metric in ${metrics}; do
 
     #assemble profile string
-    profilecmd="${profilebase} --metrics ${metric} -o ${output_dir}/profile_${metric}"
-
+    output_prefix="${output_dir}/profile.pass_forward.batchsize_2.metric_${metric}"
+    profilecmd="${profilebase} --metrics ${metric} -o ${output_prefix}"
+    
+    #since profiling takes ages, better not overwrite
+    if [ -f "${output_prefix}.ncu-rep" ]; then
+	echo "${output_prefix}.ncu-rep already exists, skipping"
+	continue
+    fi
+    
     #run the profiling
     mpirun -np ${totalranks} ${mpioptions} \
     ${profilecmd} \
