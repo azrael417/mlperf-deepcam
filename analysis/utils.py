@@ -30,10 +30,14 @@ def replace_tc_string(value):
     return value
 
 
-def import_nsight_metric(filename, cuda_dir='/usr/local/cuda'):
+def import_nsight_metric(ImportFromNsight, filename, cuda_dir='/usr/local/cuda'):
+    if not ImportFromNsight:
+        profiledf = pd.read_csv(filename)
+        return profiledf
+    
     #execute nvprof and parse file
     args = [os.path.join(cuda_dir, "bin/nv-nsight-cu-cli"),"--csv","-i",filename]
-    #skiprows = 2
+    #skiprows = 2~
         
     #open subprocess and communicate
     p = sp.Popen(args, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -51,9 +55,13 @@ def import_nsight_metric(filename, cuda_dir='/usr/local/cuda'):
     del profiledf["Stream"]
     del profiledf["Section Name"]
     
-    profiledf = profiledf.groupby(["Kernel Name", "Metric Name"]).apply(lambda x: pd.Series([x["Metric Value"].count(),x["Metric Value"].sum()])).reset_index()
-    profiledf.rename(columns={0: "Invocations", 1: "Metric Value", "Kernel Name": "Name"}, inplace=True)
-    profiledf['Metric Value'] /=profiledf['Invocations']
+    #profiledf = profiledf.groupby(["Kernel Name", "Metric Name"]).apply(lambda x: pd.Series([x["Metric Value"].count(),x["Metric Value"].sum()])).reset_index()
+    #profiledf.rename(columns={0: "Invocations", 1: "Metric Value", "Kernel Name": "Name"}, inplace=True)
+    #profiledf['Metric Value'] /=profiledf['Invocations']
+
+    profiledf.rename(columns={"Kernel Name": "Name"}, inplace=True)
+    filename = filename.replace('.ncu-rep','.csv')
+    profiledf.to_csv(filename, encoding='utf-8', index=False)
     
     #return result
     return profiledf
