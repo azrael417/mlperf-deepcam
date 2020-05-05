@@ -14,7 +14,7 @@ profilebase="$(which nv-nsight-cu-cli) --profile-from-start off -f"
 mpioptions="--allow-run-as-root --map-by ppr:4:socket:PE=3"
 
 #parameters
-run_tag="deepcam_prediction_run1-cori"
+run_tag="deepcam_prediction_run2-cori"
 data_dir_prefix="/data"
 output_dir="${data_dir_prefix}/profiles/${run_tag}"
 
@@ -76,7 +76,7 @@ dram__sectors_write.sum "
 
 ### PCI/NVLINK transactions
 metrics+="lts__t_sectors_aperture_sysmem_op_read.sum \
-lts__t_sectors_aperture_sysmem_op_read.sum "
+lts__t_sectors_aperture_sysmem_op_write.sum "
 
 
 #run training
@@ -84,7 +84,7 @@ count=0
 for metric in ${metrics}; do
 
     #assemble profile string
-    output_prefix="${output_dir}/profile.pass_forward.batchsize_2.metric_${metric}"
+    output_prefix="${output_dir}/profile.pass_backward.batchsize_2.metric_${metric}"
     profilecmd="${profilebase} --metrics ${metric} -o ${output_prefix}"
     
     #since profiling takes ages, better not overwrite
@@ -106,7 +106,7 @@ for metric in ${metrics}; do
 	   --start_lr 1e-3 \
 	   --num_warmup_steps 5 \
 	   --num_profile_steps 1 \
-	   --profile "Forward" \
+	   --profile "Backward" \
 	   --lr_schedule type="multistep",milestones="15000 25000",decay_rate="0.1" \
 	   --weight_decay 1e-2 \
 	   --amp_opt_level O1 \
