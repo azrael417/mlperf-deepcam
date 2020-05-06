@@ -68,7 +68,7 @@ export PYTHONPATH=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/lib/python3.
 
 in `src/deepCam/run_scripts/run_training_cori.sh` to point to the correct paths and add 
 
-```python
+```bash
 --wandb_certdir <my-cert-dir>
 ```
 
