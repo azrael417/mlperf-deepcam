@@ -71,8 +71,8 @@ in `src/deepCam/run_scripts/run_training_cori.sh` to point to the correct paths 
 ```bash
 --wandb_certdir <my-cert-dir>
 ```
-
-and point it to the directory which contains the `.wandbirc` file.
+to the arguments passed to the python training script. Here, `<my-cert-dir>`
+should point to the directory which contains the `.wandbirc` file created before.
 Then run
 
 ```bash
