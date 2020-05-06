@@ -83,10 +83,11 @@ sbatch -N 64 run_training_cori.sh
 
 ### Using Docker
 
-The implementation comes with a Dockerfile optimized for NVIDIA DGX-2 workstations. Use the Dockerfile 
+The implementation comes with a Dockerfile optimized for NVIDIA DGX-2 workstations but usable on 
+other NVIDIA multi-gpu systems. Use the Dockerfile 
 `docker/Dockerfile.train` to build the container and the script `src/deepCam/run_scripts/run_training_dgx2.sh`
-for training. Before building the docker container, please create a file `no-git/wandb_cert.key` 
-formatted as mentioned above before building the image.
+for training. Please create a file `no-git/wandb_cert.key` 
+formatted as mentioned above before building the image so that the builder can properly place your WandB credentials inside the container.
 
 ## References
 
