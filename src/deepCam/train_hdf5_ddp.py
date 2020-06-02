@@ -102,8 +102,16 @@ def main(pargs):
     
     # Setup WandB
     if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
+        certfile = os.path.join(pargs.wandb_certdir, ".wandbirc")
+        
+        # exit if certfile is missing
+        if not os.path.isfile(certfile):
+            printr("WanDB certfile not found, disable logging", 0)
+            have_wandb = False
+            break
+        
         # get wandb api token
-        with open(os.path.join(pargs.wandb_certdir, ".wandbirc")) as f:
+        with open(certfile) as f:
             token = f.readlines()[0].replace("\n","").split()
             wblogin = token[0]
             wbtoken = token[1]
