@@ -1,10 +1,16 @@
 # Basics
 import os
-import wandb
 import numpy as np
 import argparse as ap
 import datetime as dt
 import subprocess as sp
+
+# wandb
+try:
+    import wandb
+    have_wandb = True
+except:
+    have_wandb = False
 
 # Torch
 import torch
@@ -95,7 +101,7 @@ def main(pargs):
             os.makedirs(plot_dir)
     
     # Setup WandB
-    if (pargs.logging_frequency > 0) and (comm_rank == 0):
+    if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
         # get wandb api token
         with open(os.path.join(pargs.wandb_certdir, ".wandbirc")) as f:
             token = f.readlines()[0].replace("\n","").split()
@@ -232,7 +238,7 @@ def main(pargs):
         viz = vizc.CamVisualizer()   
     
     # Train network
-    if (pargs.logging_frequency > 0) and (comm_rank == 0):
+    if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
         wandb.watch(net)
     
     printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
@@ -305,13 +311,13 @@ def main(pargs):
                 viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
                 
                 #log if requested
-                if pargs.logging_frequency > 0:
+                if have_wandb and (pargs.logging_frequency > 0):
                     img = Image.open(outputfile)
                     wandb.log({"Training Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
             
             
             #log if requested
-            if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
+            if have_wandb and (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
                 wandb.log({"Training Loss": loss_avg.item() / float(comm_size)}, step = step)
                 wandb.log({"Training IoU": iou_avg.item() / float(comm_size)}, step = step)
                 wandb.log({"Current Learning Rate": current_lr}, step = step)
@@ -371,7 +377,7 @@ def main(pargs):
                             visualized = True
                             
                             #log if requested
-                            if pargs.logging_frequency > 0:
+                            if have_wandb and (pargs.logging_frequency > 0):
                                 img = Image.open(outputfile)
                                 wandb.log({"Validation Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
                         
@@ -392,7 +398,7 @@ def main(pargs):
                 printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
 
                 # log in wandb
-                if (pargs.logging_frequency > 0) and (comm_rank == 0):
+                if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
                     wandb.log({"Validation Loss": loss_avg_val}, step=step)
                     wandb.log({"Validation IoU": iou_avg_val}, step=step)
 
