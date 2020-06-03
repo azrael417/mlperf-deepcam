@@ -6,11 +6,12 @@ import datetime as dt
 import subprocess as sp
 
 # wandb
-have_wandb = True
+have_wandb = False
 try:
     import wandb
-except:
-    have_wandb = False
+    have_wandb = True
+except ImportError:
+    pass
 
 # Torch
 import torch
@@ -27,7 +28,12 @@ from data import cam_hdf5_dataset as cam
 from architecture import deeplab_xception
 
 #warmup scheduler
-from warmup_scheduler import GradualWarmupScheduler
+have_warmup_scheduler = False
+try:
+    from warmup_scheduler import GradualWarmupScheduler
+    have_warmup_scheduler = True
+except ImportError:
+    pass
 
 #vis stuff
 from PIL import Image
@@ -40,7 +46,7 @@ try:
     import apex.optimizers as aoptim
     from apex.parallel import DistributedDataParallel as DDP
     have_apex = True
-except:
+except ImportError:
     from torch.nn.parallel.distributed import DistributedDataParallel as DDP
     have_apex = False
 
@@ -200,7 +206,7 @@ def main(pargs):
     if pargs.lr_schedule:
         scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
-        if pargs.lr_warmup_steps > 0:
+        if have_warmup_scheduler and (pargs.lr_warmup_steps > 0):
             scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
         else:
             scheduler = scheduler_after
