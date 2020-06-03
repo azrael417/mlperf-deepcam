@@ -6,9 +6,9 @@ import datetime as dt
 import subprocess as sp
 
 # wandb
+have_wandb = True
 try:
     import wandb
-    have_wandb = True
 except:
     have_wandb = False
 
@@ -108,7 +108,7 @@ def main(pargs):
         if not os.path.isfile(certfile):
             printr("WanDB certfile not found, disable logging", 0)
             have_wandb = False
-            break
+            return
         
         # get wandb api token
         with open(certfile) as f:
