@@ -21,11 +21,10 @@ https://app.globus.org/file-manager?origin_id=0b226e2c-4de0-11ea-971a-021304b0cc
 The dataset folder contains a README with some technical description of the
 dataset and an All-Hist folder containing all of the data files.
 
-Unfortunately we don't yet have the dataset split into train/val/test nor a
-recommended procedure for doing the split yourself. You can for now do uniform
-splitting using a script similar to what is here:
-
-https://gist.github.com/sparticlesteve/8a3e81a31e89fd1cccc81a3fae3fcf2d
+### Preprocessing
+Unfortunately we don't yet have the dataset split into train/val/test, but we have a selection of scripts which achieves this. The splitting scripts are under `src/utils`. 
+For *splitting* the dataset, please change the lines 5 and 6 (`inputdir` and `outputdir`) in `split_data.py` accordingly. The first variable should specify the absolute path to the full dataset, the second variable specifies the parent directory of where the train/validation/test splits end up. Instead of copying the files, symbolic links will be created. Therefore, if you plan to run the code from a container or system with different mount points than those used for the splitting, the links might be invalid and files not found. In this case, perform the splitting in the same environment used for the runs later.
+For *summarizing* the dataset (i.e. computing summary statistics for input normalization), use script `summarize_data.py` in the same directory. Please modify line 85, `data_path_prefix` accordingly. It should point to the parent directory which hosts all the split, i.e. is equal to the `output_dir` from the above mentioned splitting script. Note that the summary script uses `mpi4py` for distributed computing, as the whole summarization on a single CPU can take a few hours. Once the `stats.h5` file is created, place it inside the training, test and validation directories.
 
 ### Previous dataset for ECP Annual Meeting 2019
 
