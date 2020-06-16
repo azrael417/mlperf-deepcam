@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A hpc
 #SBATCH -J train_cam5
-#SBATCH -t 08:00:00
+#SBATCH -t 00:10:00
 
 #ranks per node
 rankspernode=16
@@ -21,12 +21,12 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
      --container-workdir /opt/deepCam \
      --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
      --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
-     python ../train_hdf5_ddp.py \
+     python ./train_hdf5_ddp.py \
        --wireup_method "nccl-slurm" \
        --run_tag ${run_tag} \
        --data_dir_prefix ${data_dir_prefix} \
        --output_dir ${output_dir} \
-       --model_prefix "classifier" \
+       --model_prefix "segmentation" \
        --optimizer "LAMB" \
        --start_lr 1e-3 \
        --lr_schedule type="multistep",milestones="15000 25000",decay_rate="0.1" \
@@ -37,7 +37,7 @@ srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rank
        --training_visualization_frequency 200 \
        --validation_visualization_frequency 40 \
        --max_validation_steps 50 \
-       --logging_frequency 0 \
+       --logging_frequency 10 \
        --save_frequency 400 \
        --max_epochs 200 \
        --amp_opt_level O1 \
