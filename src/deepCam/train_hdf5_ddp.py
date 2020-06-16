@@ -5,6 +5,7 @@ import argparse as ap
 import datetime as dt
 import subprocess as sp
 
+# logging
 # wandb
 have_wandb = False
 try:
@@ -12,6 +13,9 @@ try:
     have_wandb = True
 except ImportError:
     pass
+
+# mlperf logger
+import utils.mlperf_log_utils as mll
 
 # Torch
 import torch
@@ -77,6 +81,11 @@ def main(pargs):
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
+
+    # set up logging
+    if (pargs.logging_frequency > 0):
+        log_file = os.path.normpath(os.path.join(pargs.data_dir_prefix, "logs", pargs.run_tag + ".log"))
+        logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
     
     #set seed
     seed = 333
@@ -84,13 +93,11 @@ def main(pargs):
     # Some setup
     torch.manual_seed(seed)
     if torch.cuda.is_available():
-        printr("Using GPUs",0)
         device = torch.device("cuda", comm_local_rank)
         torch.cuda.manual_seed(seed)
         #necessary for AMP to work
         torch.cuda.set_device(device)
     else:
-        printr("Using CPUs",0)
         device = torch.device("cpu")
 
     #visualize?
@@ -107,50 +114,58 @@ def main(pargs):
             os.makedirs(plot_dir)
     
     # Setup WandB
+    if not pargs.enable_wandb:
+        have_wandb = False
     if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
-        certfile = os.path.join(pargs.wandb_certdir, ".wandbirc")
-        
-        # exit if certfile is missing
-        if not os.path.isfile(certfile):
-            printr("WanDB certfile not found, disable logging", 0)
-            have_wandb = False
-            return
-        
         # get wandb api token
-        with open(certfile) as f:
-            token = f.readlines()[0].replace("\n","").split()
-            wblogin = token[0]
-            wbtoken = token[1]
-        # log in: that call can be blocking, it should be quick
-        sp.call(["wandb", "login", wbtoken])
+        certfile = os.path.join(pargs.wandb_certdir, ".wandbirc")
+        try:
+            with open(certfile) as f:
+                token = f.readlines()[0].replace("\n","").split()
+                wblogin = token[0]
+                wbtoken = token[1]
+        except IOError:
+            print("Error, cannot open WandB certificate {}.".format(certfile))
+            have_wandb = False
+
+        if have_wandb:
+            # log in: that call can be blocking, it should be quick
+            sp.call(["wandb", "login", wbtoken])
         
-        #init db and get config
-        resume_flag = pargs.run_tag if pargs.resume_logging else False
-        wandb.init(entity = wblogin, project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
-        config = wandb.config
-    
-        #set general parameters
-        config.root_dir = root_dir
-        config.output_dir = pargs.output_dir
-        config.max_epochs = pargs.max_epochs
-        config.local_batch_size = pargs.local_batch_size
-        config.num_workers = comm_size
-        config.channels = pargs.channels
-        config.optimizer = pargs.optimizer
-        config.start_lr = pargs.start_lr
-        config.adam_eps = pargs.adam_eps
-        config.weight_decay = pargs.weight_decay
-        config.model_prefix = pargs.model_prefix
-        config.amp_opt_level = pargs.amp_opt_level
-        config.loss_weight_pow = pargs.loss_weight_pow
-        config.lr_warmup_steps = pargs.lr_warmup_steps
-        config.lr_warmup_factor = pargs.lr_warmup_factor
-    
-        # lr schedule if applicable
-        if pargs.lr_schedule:
-            for key in pargs.lr_schedule:
-                config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
+            #init db and get config
+            resume_flag = pargs.run_tag if pargs.resume_logging else False
+            wandb.init(entity = wblogin, project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
+            config = wandb.config
+        
+            #set general parameters
+            config.root_dir = root_dir
+            config.output_dir = pargs.output_dir
+            config.max_epochs = pargs.max_epochs
+            config.local_batch_size = pargs.local_batch_size
+            config.num_workers = comm_size
+            config.channels = pargs.channels
+            config.optimizer = pargs.optimizer
+            config.start_lr = pargs.start_lr
+            config.adam_eps = pargs.adam_eps
+            config.weight_decay = pargs.weight_decay
+            config.model_prefix = pargs.model_prefix
+            config.amp_opt_level = pargs.amp_opt_level
+            config.loss_weight_pow = pargs.loss_weight_pow
+            config.lr_warmup_steps = pargs.lr_warmup_steps
+            config.lr_warmup_factor = pargs.lr_warmup_factor
             
+            # lr schedule if applicable
+            if pargs.lr_schedule:
+                for key in pargs.lr_schedule:
+                    config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
+
+
+    if (pargs.logging_frequency > 0):
+        # initial logging
+        logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
+        # start init
+        logger.log_start(key = "init_start", sync = True)
+    
 
     # Define architecture
     n_input_channels = len(pargs.channels)
@@ -233,7 +248,7 @@ def main(pargs):
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
+    train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
     
     # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
     validation_dir = os.path.join(root_dir, "validation")
@@ -244,8 +259,13 @@ def main(pargs):
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers=min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
+    validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
 
+    # log size of datasets
+    if (pargs.logging_frequency > 0):
+        # dset sizes
+        logger.log_event(key = "train_samples", value = train_set.global_size)
+        logger.log_event(key = "eval_samples", value = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size]))
     
     #for visualization
     if visualize:
@@ -254,15 +274,24 @@ def main(pargs):
     # Train network
     if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
         wandb.watch(net)
-    
+
+
     printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
+    if (pargs.logging_frequency > 0):
+        logger.log_end(key = "init_stop", sync = True)
+        logger.log_start(key = "run_start", sync = True)
+    
     step = start_step
     epoch = start_epoch
     current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
     net.train()
+
+    # training loop
     while True:
-        
+
         printr('{:14.4f} REPORT: starting epoch {}'.format(dt.datetime.now().timestamp(), epoch), 0)
+        if pargs.logging_frequency > 0:
+            logger.log_start(key = "epoch_start", sync=True)
         
         #for inputs_raw, labels, source in train_loader:
         for inputs, label, filename in train_loader:
@@ -296,17 +325,19 @@ def main(pargs):
                 loss.backward()
             optimizer.step()
 
-            #step counter
+            # step counter
             step += 1
             
             if pargs.lr_schedule:
                 current_lr = scheduler.get_last_lr()[0]
                 scheduler.step()
 
-            #print some metrics
+            # print some metrics
+            loss_avg_train = loss_avg.item() / float(comm_size)
+            iou_avg_train = iou_avg.item() / float(comm_size)
             printr('{:14.4f} REPORT training: step {} loss {} iou {} LR {}'.format(dt.datetime.now().timestamp(), step,
-                                                                                   loss_avg.item() / float(comm_size),
-                                                                                   iou_avg.item() / float(comm_size),
+                                                                                   loss_avg_train,
+                                                                                   iou_avg_train,
                                                                                    current_lr), 0)
 
             #visualize if requested
@@ -327,15 +358,20 @@ def main(pargs):
                 #log if requested
                 if have_wandb and (pargs.logging_frequency > 0):
                     img = Image.open(outputfile)
-                    wandb.log({"Training Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
+                    wandb.log({"train_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
             
             
             #log if requested
-            if have_wandb and (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0) and (comm_rank == 0):
-                wandb.log({"Training Loss": loss_avg.item() / float(comm_size)}, step = step)
-                wandb.log({"Training IoU": iou_avg.item() / float(comm_size)}, step = step)
-                wandb.log({"Current Learning Rate": current_lr}, step = step)
-                
+            if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0):
+                logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch, 'step_num': step})
+		logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
+                logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
+                if have_wandb and (comm_rank == 0):
+                    wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
+                    wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
+                    wandb.log({"learning_rate": current_lr}, step = step)
+
+            
             # validation step if desired
             if (step % pargs.validation_frequency == 0):
                 
@@ -393,7 +429,7 @@ def main(pargs):
                             #log if requested
                             if have_wandb and (pargs.logging_frequency > 0):
                                 img = Image.open(outputfile)
-                                wandb.log({"Validation Examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
+                                wandb.log({"eval_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
                         
                         #increase eval step counter
                         step_val += 1
@@ -407,14 +443,19 @@ def main(pargs):
                 dist.reduce(iou_sum_val, dst=0, op=dist.ReduceOp.SUM)
                 loss_avg_val = loss_sum_val.item() / count_sum_val.item()
                 iou_avg_val = iou_sum_val.item() / count_sum_val.item()
+
+                #print
+                printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
                 
                 # print results
-                printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
+                if (pargs.logging_frequency > 0):
+                    logger.log_event(key = "eval_accuracy", value = iou_avg_val, metadata = {'epoch_num': epoch, 'step_num': step})
+                    logger.log_event(key = "eval_loss", value = loss_avg_val, metadata = {'epoch_num': epoch, 'step_num': step})
 
-                # log in wandb
-                if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
-                    wandb.log({"Validation Loss": loss_avg_val}, step=step)
-                    wandb.log({"Validation IoU": iou_avg_val}, step=step)
+                    # log in wandb
+                    if have_wandb:
+                        wandb.log({"eval_loss": loss_avg_val}, step=step)
+                        wandb.log({"eval_accuracy": iou_avg_val}, step=step)
 
                 # set to train
                 net.train()
@@ -433,6 +474,8 @@ def main(pargs):
 
         #do some after-epoch prep, just for the books
         epoch += 1
+        logger.log_end(key = "epoch_stop", sync = True)
+        
         if comm_rank==0:
           
             # Save the model
@@ -451,6 +494,8 @@ def main(pargs):
             break
 
     printr('{:14.4f} REPORT: finishing training'.format(dt.datetime.now().timestamp()), 0)
+    if (pargs.logging_frequency > 0):
+        logger.log_end(key = "run_stop", sync = True)
     
 
 if __name__ == "__main__":
@@ -483,6 +528,7 @@ if __name__ == "__main__":
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
+    AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
 

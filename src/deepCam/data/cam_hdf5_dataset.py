@@ -1,6 +1,7 @@
 import os
 import h5py as h5
 import numpy as np
+import math
 from time import sleep
 
 import torch
@@ -18,13 +19,14 @@ class CamDataset(Dataset):
             self.rng.shuffle(self.all_files)
             
         #split
-        num_files_local = len(self.all_files) // self.comm_size
+        num_files_local = int(math.ceil(float(len(self.all_files)) / float(self.comm_size)))
         start_idx = self.comm_rank * num_files_local
-        end_idx = start_idx + num_files_local
+        end_idx = min([start_idx + num_files_local, len(self.all_files)])
         self.files = self.all_files[start_idx:end_idx]
         
         #my own files
-        self.length = len(self.files)
+        self.global_size = len(self.all_files)
+        self.local_size = len(self.files)
 
   
     def __init__(self, source, statsfile, channels, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
@@ -58,12 +60,13 @@ class CamDataset(Dataset):
         #reshape into broadcastable shape
         self.data_shift = np.reshape( data_shift, (data_shift.shape[0], 1, 1) ).astype(np.float32)
         self.data_scale = np.reshape( data_scale, (data_scale.shape[0], 1, 1) ).astype(np.float32)
-        
-        print("Initialized dataset with ", self.length, " samples.")
+
+        if comm_rank == 0:
+            print("Initialized dataset with ", self.global_size, " samples.")
 
 
     def __len__(self):
-        return self.length
+        return self.local_size
 
 
     @property

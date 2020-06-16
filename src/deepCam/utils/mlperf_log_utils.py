@@ -39,6 +39,7 @@ class mlperf_logger(object):
         self.mllogger = mllog.get_mllogger()
         self.comm_rank = comm.get_rank()
         self.comm_size = comm.get_size()
+        self.constants = constants
 
         mllog.config(filename = filename)
         self.mllogger.logger.propagate = False
