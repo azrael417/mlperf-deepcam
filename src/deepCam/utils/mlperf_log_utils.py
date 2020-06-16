@@ -30,91 +30,76 @@ import torch.utils.collect_env
 from mlperf_logging.mllog import constants
 from mlperf_logging import mllog
 
+#comm wrapper
+from utils import comm
 
-mllogger = mllog.get_mllogger()
+class mlperf_logger(object):
 
-def log_start(*args, **kwargs):
-    _log_print(mllogger.start, *args, **kwargs)
-def log_end(*args, **kwargs):
-    _log_print(mllogger.end, *args, **kwargs)
-def log_event(*args, **kwargs):
-    _log_print(mllogger.event, *args, **kwargs)
-def _log_print(logger, *args, **kwargs):
-    """
-    Wrapper for MLPerf compliance logging calls.
-    All arguments but 'sync' and 'log_all_ranks' are passed to
-    mlperf_logging.mllog.
-    If 'sync' is set to True then the wrapper will synchronize all distributed
-    workers. 'sync' should be set to True for all compliance tags that require
-    accurate timing (RUN_START, RUN_STOP etc.)
-    If 'log_all_ranks' is set to True then all distributed workers will print
-    logging message, if set to False then only worker with rank=0 will print
-    the message.
-    """
-    if kwargs.pop('sync', False):
-        barrier()
-    if 'stack_offset' not in kwargs:
-        kwargs['stack_offset'] = 3
-    if 'value' not in kwargs:
-        kwargs['value'] = None
+    def __init__(self, filename, benchmark, organization):
+        self.mllogger = mllog.get_mllogger()
+        self.comm_rank = comm.get_rank()
+        self.comm_size = comm.get_size()
 
-    if kwargs.pop('log_all_ranks', False):
-        log = True
-    else:
-        log = (get_rank() == 0)
+        mllog.config(filename = filename)
+        self.mllogger.logger.propagate = False
+        self.log_event(key = constants.SUBMISSION_BENCHMARK,
+                       value = benchmark)
 
-    if log:
-        logger(*args, **kwargs)
+        self.log_event(key = constants.SUBMISSION_ORG,
+                       value = organization)
+        
+        self.log_event(key = constants.SUBMISSION_DIVISION,
+                       value = 'closed')
 
+        self.log_event(key = constants.SUBMISSION_STATUS,
+                       value = 'onprem')
 
-def mlperf_submission_log(benchmark):
+        self.log_event(key = constants.SUBMISSION_PLATFORM,
+                       value = f'{comm_size}xSUBMISSION_PLATFORM_PLACEHOLDER')
+        
 
-    num_nodes = os.environ.get('SLURM_NNODES', 1)
+    def log_start(self, *args, **kwargs):
+        self._log_print(self.mllogger.start, *args, **kwargs)
+        
+    def log_end(self, *args, **kwargs):
+        self._log_print(self.mllogger.end, *args, **kwargs)
+        
+    def log_event(self, *args, **kwargs):
+        self._log_print(self.mllogger.event, *args, **kwargs)
 
-    mllog.config(filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'transformer.log'))
-    mllogger = mllog.get_mllogger()
-    mllogger.logger.propagate = False
+    def _log_print(self, logger, *args, **kwargs):
+        """
+        Wrapper for MLPerf compliance logging calls.
+        All arguments but 'sync' and 'log_all_ranks' are passed to
+        mlperf_logging.mllog.
+        If 'sync' is set to True then the wrapper will synchronize all distributed
+        workers. 'sync' should be set to True for all compliance tags that require
+        accurate timing (RUN_START, RUN_STOP etc.)
+        If 'log_all_ranks' is set to True then all distributed workers will print
+        logging message, if set to False then only worker with rank=0 will print
+        the message.
+        """
+        if kwargs.pop('sync', False):
+            self.barrier()
+        if 'stack_offset' not in kwargs:
+            kwargs['stack_offset'] = 3
+        if 'value' not in kwargs:
+            kwargs['value'] = None
 
-    log_event(
-        key=constants.SUBMISSION_BENCHMARK,
-        value=benchmark,
-        )
+        if kwargs.pop('log_all_ranks', False):
+            log = True
+        else:
+            log = (self.comm_rank == 0)
 
-    log_event(
-        key=constants.SUBMISSION_ORG,
-        value='NVIDIA')
+        if log:
+            logger(*args, **kwargs)
 
-    log_event(
-        key=constants.SUBMISSION_DIVISION,
-        value='closed')
-
-    log_event(
-        key=constants.SUBMISSION_STATUS,
-        value='onprem')
-
-    log_event(
-        key=constants.SUBMISSION_PLATFORM,
-        value=f'{num_nodes}xSUBMISSION_PLATFORM_PLACEHOLDER')
-
-def barrier():
-    """
-    Works as a temporary distributed barrier, currently pytorch
-    doesn't implement barrier for NCCL backend.
-    Calls all_reduce on dummy tensor and synchronizes with GPU.
-    """
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        torch.distributed.barrier()
-        #torch.distributed.all_reduce(torch.cuda.FloatTensor(1))
-        #torch.cuda.synchronize()
-
-
-def get_rank():
-    """
-    Gets distributed rank or returns zero if distributed is not initialized.
-    """
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        rank = torch.distributed.get_rank()
-    else:
-        rank = 0
-    return rank
+    def barrier(self):
+        """
+        Works as a temporary distributed barrier, currently pytorch
+        doesn't implement barrier for NCCL backend.
+        Calls all_reduce on dummy tensor and synchronizes with GPU.
+        """
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.barrier()
 
