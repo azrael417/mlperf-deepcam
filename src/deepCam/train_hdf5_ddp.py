@@ -86,6 +86,7 @@ def main(pargs):
     if (pargs.logging_frequency > 0):
         log_file = os.path.normpath(os.path.join(pargs.data_dir_prefix, "logs", pargs.run_tag + ".log"))
         logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
+        logger.log_start(key = "init_start", sync = True)        
     
     #set seed
     seed = 333
@@ -163,8 +164,6 @@ def main(pargs):
     if (pargs.logging_frequency > 0):
         # initial logging
         logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-        # start init
-        logger.log_start(key = "init_start", sync = True)
     
 
     # Define architecture
@@ -274,17 +273,17 @@ def main(pargs):
     # Train network
     if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
         wandb.watch(net)
-
-
-    printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
-    if (pargs.logging_frequency > 0):
-        logger.log_end(key = "init_stop", sync = True)
-        logger.log_start(key = "run_start", sync = True)
     
     step = start_step
     epoch = start_epoch
     current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
     net.train()
+
+    # start trining
+    printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
+    if (pargs.logging_frequency > 0):
+	logger.log_end(key = "init_stop", sync = True)
+        logger.log_start(key = "run_start", sync = True)
 
     # training loop
     while True:
@@ -457,6 +456,11 @@ def main(pargs):
                         wandb.log({"eval_loss": loss_avg_val}, step=step)
                         wandb.log({"eval_accuracy": iou_avg_val}, step=step)
 
+                if (iou_avg_val >= pargs.target_iou):
+                    printr('{:14.4f} REPORT target accuracy reached: step {} iou {}'.format(dt.datetime.now().timestamp(), step, iou_avg_val), 0)
+                    if (pargs.logging_frequency > 0):
+                        logger.log_event(key = "target_accuracy_reached", metadata = {'epoch_num': epoch, 'step_num': step})
+                        
                 # set to train
                 net.train()
             
@@ -526,6 +530,7 @@ if __name__ == "__main__":
     AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")
     AP.add_argument("--lr_warmup_factor", type=float, default=1., help="Multiplier for linear LR warmup")
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
+    AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
     AP.add_argument("--enable_wandb", action='store_true')
