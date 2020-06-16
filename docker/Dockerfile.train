@@ -13,6 +13,9 @@ RUN pip install mpi4py
 #pip install more python modules
 RUN pip install wandb
 
+#install mlperf logging
+RUN pip install "git+https://github.com/mlperf/logging.git"
+
 #install gradual warmup
 RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
