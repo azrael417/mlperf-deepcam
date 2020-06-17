@@ -445,7 +445,7 @@ def main(pargs):
                 logger.log_event(key = "eval_loss", value = loss_avg_val, metadata = {'epoch_num': epoch+1, 'step_num': step})
 
                 # log in wandb
-                if have_wandb:
+                if have_wandb and (comm_rank == 0):
                     wandb.log({"eval_loss": loss_avg_val}, step=step)
                     wandb.log({"eval_accuracy": iou_avg_val}, step=step)
 
