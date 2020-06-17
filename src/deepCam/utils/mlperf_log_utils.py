@@ -41,6 +41,11 @@ class mlperf_logger(object):
         self.comm_size = comm.get_size()
         self.constants = constants
 
+        # create logging dir if it does not exist
+        logdir = os.path.dirname(filename)
+        if not os.path.isdir(logdir):
+            os.makedirs(logdir)
+        
         mllog.config(filename = filename)
         self.mllogger.logger.propagate = False
         self.log_event(key = constants.SUBMISSION_BENCHMARK,
@@ -56,7 +61,7 @@ class mlperf_logger(object):
                        value = 'onprem')
 
         self.log_event(key = constants.SUBMISSION_PLATFORM,
-                       value = f'{comm_size}xSUBMISSION_PLATFORM_PLACEHOLDER')
+                       value = f'{self.comm_size}xSUBMISSION_PLATFORM_PLACEHOLDER')
         
 
     def log_start(self, *args, **kwargs):

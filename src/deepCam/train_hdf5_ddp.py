@@ -84,7 +84,7 @@ def main(pargs):
 
     # set up logging
     if (pargs.logging_frequency > 0):
-        log_file = os.path.normpath(os.path.join(pargs.data_dir_prefix, "logs", pargs.run_tag + ".log"))
+        log_file = os.path.normpath(os.path.join(pargs.output_dir, "logs", pargs.run_tag + ".log"))
         logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
         logger.log_start(key = "init_start", sync = True)        
     
@@ -282,7 +282,7 @@ def main(pargs):
     # start trining
     printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
     if (pargs.logging_frequency > 0):
-	logger.log_end(key = "init_stop", sync = True)
+        logger.log_end(key = "init_stop", sync = True)
         logger.log_start(key = "run_start", sync = True)
 
     # training loop
