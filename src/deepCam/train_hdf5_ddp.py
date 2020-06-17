@@ -68,11 +68,6 @@ class StoreDictKeyPair(ap.Action):
         setattr(namespace, self.dest, my_dict)
 
 
-def printr(msg, rank=0):
-    if comm.get_rank() == rank:
-        print(msg)
-
-
 #main function
 def main(pargs):
 
@@ -251,7 +246,11 @@ def main(pargs):
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    train_loader = DataLoader(train_set, pargs.local_batch_size, num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
+    train_loader = DataLoader(train_set,
+                              pargs.local_batch_size,
+                              num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                              pin_memory = True,
+                              drop_last = True)
     
     # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
     validation_dir = os.path.join(root_dir, "validation")
@@ -263,11 +262,20 @@ def main(pargs):
                                preprocess = True,
                                comm_size = comm_size,
                                comm_rank = comm_rank)
-    validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
+    # use batch size = 1 here to make sure that we do not drop a sample
+    validation_loader = DataLoader(validation_set,
+                                   1,
+                                   num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                                   pin_memory = True,
+                                   drop_last = True)
 
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_set.global_size)
     logger.log_event(key = "eval_samples", value = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size]))
+
+    # do sanity check
+    if pargs.max_validation_steps is not None:
+        logger.log_event(key = "invalid_submission")
     
     #for visualization
     if visualize:
@@ -498,7 +506,7 @@ if __name__ == "__main__":
     AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
     AP.add_argument("--save_frequency", type=int, default=100, help="Frequency with which the model is saved in number of steps")
     AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
-    AP.add_argument("--max_validation_steps", type=int, default=None, help="Number of validation steps to perform. Helps when validation takes a long time")
+    AP.add_argument("--max_validation_steps", type=int, default=None, help="Number of validation steps to perform. Helps when validation takes a long time. WARNING: setting this argument invalidates submission. It should only be used for exploration, the final submission needs to have it disabled.")
     AP.add_argument("--logging_frequency", type=int, default=100, help="Frequency with which the training progress is logged. If not positive, logging will be disabled")
     AP.add_argument("--training_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during training")
     AP.add_argument("--validation_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during validation")
@@ -518,6 +526,6 @@ if __name__ == "__main__":
     AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
-
+    
     #run the stuff
     main(pargs)
