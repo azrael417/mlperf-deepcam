@@ -285,7 +285,7 @@ def main(pargs):
     while True:
 
         # start epoch
-        logger.log_start(key = "epoch_start", sync=True)
+        logger.log_start(key = "epoch_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync=True)
 
         # epoch loop
         for inputs, label, filename in train_loader:
@@ -453,34 +453,24 @@ def main(pargs):
                 net.train()
             
             #save model if desired
-            if (step % pargs.save_frequency == 0) and (comm_rank == 0):
-                checkpoint = {
-                    'step': step,
-                    'epoch': epoch,
-                    'model': net.state_dict(),
-                    'optimizer': optimizer.state_dict()
-		}
-                if have_apex:
-                    checkpoint['amp'] = amp.state_dict()
-                torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
+            if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
+                logger.log_start(key = "save_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+                if comm_rank == 0:
+                    checkpoint = {
+                        'step': step,
+                        'epoch': epoch,
+                        'model': net.state_dict(),
+                        'optimizer': optimizer.state_dict()
+		    }
+                    if have_apex:
+                        checkpoint['amp'] = amp.state_dict()
+                    torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
+                logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
 
-        #do some after-epoch prep, just for the books
+        # log the epoch
+        logger.log_end(key = "epoch_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
         epoch += 1
-        logger.log_end(key = "epoch_stop", sync = True)
         
-        if comm_rank==0:
-          
-            # Save the model
-            checkpoint = {
-                'step': step,
-                'epoch': epoch,
-                'model': net.state_dict(),
-                'optimizer': optimizer.state_dict()
-            }
-            if have_apex:
-                checkpoint['amp'] = amp.state_dict()
-            torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_epoch_" + str(epoch) + ".cpt") )
-
         # are we done?
         if epoch >= pargs.max_epochs:
             break
