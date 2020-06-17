@@ -8,7 +8,7 @@ rankspernode=16
 totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
 
 #parameters
-run_tag="deepcam_prediction_run5_nnodes${SLURM_NNODES}-3"
+run_tag="deepcam_prediction_run5_nnodes${SLURM_NNODES}-4"
 data_dir_prefix="/data"
 output_dir="/runs/${run_tag}"
 checkpoint_file="${output_dir}/classifier_step_17200.cpt"

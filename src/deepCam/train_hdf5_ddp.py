@@ -363,8 +363,9 @@ def main(pargs):
             #log if requested
             if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0):
                 logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch, 'step_num': step})
-		logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
+                logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
                 logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
+                
                 if have_wandb and (comm_rank == 0):
                     wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
                     wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
