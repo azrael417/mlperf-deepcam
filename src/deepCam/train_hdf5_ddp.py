@@ -76,6 +76,9 @@ def printr(msg, rank=0):
 #main function
 def main(pargs):
 
+    # this should be global
+    global have_wandb
+
     #init distributed training
     comm.init(pargs.wireup_method)
     comm_rank = comm.get_rank()
