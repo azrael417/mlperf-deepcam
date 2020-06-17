@@ -83,13 +83,14 @@ def main(pargs):
     comm_size = comm.get_size()
 
     # set up logging
-    if (pargs.logging_frequency > 0):
-        log_file = os.path.normpath(os.path.join(pargs.output_dir, "logs", pargs.run_tag + ".log"))
-        logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
-        logger.log_start(key = "init_start", sync = True)        
+    pargs.logging_frequency = max([pargs.logging_frequency, 1])
+    log_file = os.path.normpath(os.path.join(pargs.output_dir, "logs", pargs.run_tag + ".log"))
+    logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
+    logger.log_start(key = "init_start", sync = True)        
     
     #set seed
     seed = 333
+    logger.log_event(key = "seed", value = seed)
     
     # Some setup
     torch.manual_seed(seed)
@@ -117,7 +118,7 @@ def main(pargs):
     # Setup WandB
     if not pargs.enable_wandb:
         have_wandb = False
-    if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
+    if have_wandb and (comm_rank == 0):
         # get wandb api token
         certfile = os.path.join(pargs.wandb_certdir, ".wandbirc")
         try:
@@ -161,10 +162,9 @@ def main(pargs):
                     config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
 
 
-    if (pargs.logging_frequency > 0):
-        # initial logging
-        logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-    
+    # initial logging
+    logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
+    logger.log_event(key = "optimizer", value = pargs.optimizer)
 
     # Define architecture
     n_input_channels = len(pargs.channels)
@@ -261,17 +261,15 @@ def main(pargs):
     validation_loader = DataLoader(validation_set, pargs.local_batch_size, num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]), drop_last=True)
 
     # log size of datasets
-    if (pargs.logging_frequency > 0):
-        # dset sizes
-        logger.log_event(key = "train_samples", value = train_set.global_size)
-        logger.log_event(key = "eval_samples", value = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size]))
+    logger.log_event(key = "train_samples", value = train_set.global_size)
+    logger.log_event(key = "eval_samples", value = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size]))
     
     #for visualization
     if visualize:
         viz = vizc.CamVisualizer()   
     
     # Train network
-    if have_wandb and (pargs.logging_frequency > 0) and (comm_rank == 0):
+    if have_wandb and (comm_rank == 0):
         wandb.watch(net)
     
     step = start_step
@@ -280,22 +278,19 @@ def main(pargs):
     net.train()
 
     # start trining
-    printr('{:14.4f} REPORT: starting training'.format(dt.datetime.now().timestamp()), 0)
-    if (pargs.logging_frequency > 0):
-        logger.log_end(key = "init_stop", sync = True)
-        logger.log_start(key = "run_start", sync = True)
+    logger.log_end(key = "init_stop", sync = True)
+    logger.log_start(key = "run_start", sync = True)
 
     # training loop
     while True:
 
-        printr('{:14.4f} REPORT: starting epoch {}'.format(dt.datetime.now().timestamp(), epoch), 0)
-        if pargs.logging_frequency > 0:
-            logger.log_start(key = "epoch_start", sync=True)
-        
-        #for inputs_raw, labels, source in train_loader:
+        # start epoch
+        logger.log_start(key = "epoch_start", sync=True)
+
+        # epoch loop
         for inputs, label, filename in train_loader:
             
-            #send to device
+            # send to device
             inputs = inputs.to(device)
             label = label.to(device)
             
@@ -304,16 +299,6 @@ def main(pargs):
             
             # Compute loss and average across nodes
             loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
-            
-            # allreduce for loss
-            loss_avg = loss.detach()
-            dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
-            
-            # Compute score
-            predictions = torch.max(outputs, 1)[1]
-            iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
-            iou_avg = iou.detach()
-            dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
             
             # Backprop
             optimizer.zero_grad()
@@ -331,40 +316,48 @@ def main(pargs):
                 current_lr = scheduler.get_last_lr()[0]
                 scheduler.step()
 
-            # print some metrics
-            loss_avg_train = loss_avg.item() / float(comm_size)
-            iou_avg_train = iou_avg.item() / float(comm_size)
-            printr('{:14.4f} REPORT training: step {} loss {} iou {} LR {}'.format(dt.datetime.now().timestamp(), step,
-                                                                                   loss_avg_train,
-                                                                                   iou_avg_train,
-                                                                                   current_lr), 0)
-
             #visualize if requested
             if (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
-                #extract sample id and data tensors
+                # Compute predictions
+                predictions = torch.max(outputs, 1)[1]
+                
+                # extract sample id and data tensors
                 sample_idx = np.random.randint(low=0, high=label.shape[0])
                 plot_input = inputs.detach()[sample_idx, 0,...].cpu().numpy()
                 plot_prediction = predictions.detach()[sample_idx,...].cpu().numpy()
                 plot_label = label.detach()[sample_idx,...].cpu().numpy()
                 
-                #create filenames
+                # create filenames
                 outputfile = os.path.basename(filename[sample_idx]).replace("data-", "training-").replace(".h5", ".png")
                 outputfile = os.path.join(plot_dir, outputfile)
                 
-                #plot
+                # plot
                 viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
                 
                 #log if requested
-                if have_wandb and (pargs.logging_frequency > 0):
+                if have_wandb:
                     img = Image.open(outputfile)
                     wandb.log({"train_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
             
             
             #log if requested
-            if (pargs.logging_frequency > 0) and (step % pargs.logging_frequency == 0):
-                logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch, 'step_num': step})
-                logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
-                logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch, 'step_num': step})
+            if (step % pargs.logging_frequency == 0):
+
+                # allreduce for loss
+                loss_avg = loss.detach()
+                dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
+                loss_avg_train = loss_avg.item() / float(comm_size)
+
+                # Compute score
+                predictions = torch.max(outputs, 1)[1]
+                iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
+                iou_avg = iou.detach()
+                dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
+                iou_avg_train = iou_avg.item() / float(comm_size)
+                
+                logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
                 
                 if have_wandb and (comm_rank == 0):
                     wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
@@ -427,7 +420,7 @@ def main(pargs):
                             visualized = True
                             
                             #log if requested
-                            if have_wandb and (pargs.logging_frequency > 0):
+                            if have_wandb:
                                 img = Image.open(outputfile)
                                 wandb.log({"eval_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
                         
@@ -443,24 +436,18 @@ def main(pargs):
                 dist.reduce(iou_sum_val, dst=0, op=dist.ReduceOp.SUM)
                 loss_avg_val = loss_sum_val.item() / count_sum_val.item()
                 iou_avg_val = iou_sum_val.item() / count_sum_val.item()
-
-                #print
-                printr('{:14.4f} REPORT validation: step {} loss {} iou {}'.format(dt.datetime.now().timestamp(), step, loss_avg_val, iou_avg_val), 0)
                 
                 # print results
-                if (pargs.logging_frequency > 0):
-                    logger.log_event(key = "eval_accuracy", value = iou_avg_val, metadata = {'epoch_num': epoch, 'step_num': step})
-                    logger.log_event(key = "eval_loss", value = loss_avg_val, metadata = {'epoch_num': epoch, 'step_num': step})
+                logger.log_event(key = "eval_accuracy", value = iou_avg_val, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                logger.log_event(key = "eval_loss", value = loss_avg_val, metadata = {'epoch_num': epoch+1, 'step_num': step})
 
-                    # log in wandb
-                    if have_wandb:
-                        wandb.log({"eval_loss": loss_avg_val}, step=step)
-                        wandb.log({"eval_accuracy": iou_avg_val}, step=step)
+                # log in wandb
+                if have_wandb:
+                    wandb.log({"eval_loss": loss_avg_val}, step=step)
+                    wandb.log({"eval_accuracy": iou_avg_val}, step=step)
 
                 if (iou_avg_val >= pargs.target_iou):
-                    printr('{:14.4f} REPORT target accuracy reached: step {} iou {}'.format(dt.datetime.now().timestamp(), step, iou_avg_val), 0)
-                    if (pargs.logging_frequency > 0):
-                        logger.log_event(key = "target_accuracy_reached", metadata = {'epoch_num': epoch, 'step_num': step})
+                    logger.log_event(key = "target_accuracy_reached", metadata = {'epoch_num': epoch+1, 'step_num': step})
                         
                 # set to train
                 net.train()
@@ -494,13 +481,12 @@ def main(pargs):
                 checkpoint['amp'] = amp.state_dict()
             torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_epoch_" + str(epoch) + ".cpt") )
 
-        #are we done?
+        # are we done?
         if epoch >= pargs.max_epochs:
             break
 
-    printr('{:14.4f} REPORT: finishing training'.format(dt.datetime.now().timestamp()), 0)
-    if (pargs.logging_frequency > 0):
-        logger.log_end(key = "run_stop", sync = True)
+    # run done
+    logger.log_end(key = "run_stop", sync = True)
     
 
 if __name__ == "__main__":
