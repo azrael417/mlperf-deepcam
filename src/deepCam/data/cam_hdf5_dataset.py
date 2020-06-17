@@ -34,7 +34,7 @@ class CamDataset(Dataset):
             start_idx = self.comm_rank * num_files_local
             end_idx = start_idx + num_files_local
             self.files = self.all_files[start_idx:end_idx]
-            self.global_size = comm_size * len(self.files)
+            self.global_size = self.comm_size * len(self.files)
         
         #my own files
         self.local_size = len(self.files)
