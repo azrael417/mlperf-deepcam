@@ -18,18 +18,29 @@ class CamDataset(Dataset):
         if self.shuffle:
             self.rng.shuffle(self.all_files)
             
-        #split
-        num_files_local = int(math.ceil(float(len(self.all_files)) / float(self.comm_size)))
-        start_idx = self.comm_rank * num_files_local
-        end_idx = min([start_idx + num_files_local, len(self.all_files)])
-        self.files = self.all_files[start_idx:end_idx]
+        #shard the dataset
+        self.global_size = len(self.all_files)
+        if self.allow_uneven_distribution:
+            # this setting covers the data set completely, but the
+            # last worker might get fewer samples than the rest
+            num_files_local = int(math.ceil(float(self.global_size) / float(self.comm_size)))
+            start_idx = self.comm_rank * num_files_local
+            end_idx = min([start_idx + num_files_local, self.global_size])
+            self.files = self.all_files[start_idx:end_idx]
+        else:
+            # here, every worker gets the same number of samples, 
+            # potentially under-sampling the data
+            num_files_local = self.global_size // self.comm_size
+            start_idx = self.comm_rank * num_files_local
+            end_idx = start_idx + num_files_local
+            self.files = self.all_files[start_idx:end_idx]
+            self.global_size = comm_size * len(self.files)
         
         #my own files
-        self.global_size = len(self.all_files)
         self.local_size = len(self.files)
 
   
-    def __init__(self, source, statsfile, channels, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
+    def __init__(self, source, statsfile, channels, allow_uneven_distribution = False, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
         self.source = source
         self.statsfile = statsfile
         self.channels = channels
@@ -38,6 +49,7 @@ class CamDataset(Dataset):
         self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) ] )
         self.comm_size = comm_size
         self.comm_rank = comm_rank
+        self.allow_uneven_distribution = allow_uneven_distribution
         
         #split list of files
         self.rng = np.random.RandomState(seed)

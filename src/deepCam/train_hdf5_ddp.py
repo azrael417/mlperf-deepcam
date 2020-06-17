@@ -246,6 +246,7 @@ def main(pargs):
     train_set = cam.CamDataset(train_dir, 
                                statsfile = os.path.join(root_dir, 'stats.h5'),
                                channels = pargs.channels,
+                               allow_uneven_distribution = False,
                                shuffle = True, 
                                preprocess = True,
                                comm_size = comm_size,
@@ -257,6 +258,7 @@ def main(pargs):
     validation_set = cam.CamDataset(validation_dir, 
                                statsfile = os.path.join(root_dir, 'stats.h5'),
                                channels = pargs.channels,
+                               allow_uneven_distribution = True,
                                shuffle = (pargs.max_validation_steps is not None),
                                preprocess = True,
                                comm_size = comm_size,
@@ -395,7 +397,7 @@ def main(pargs):
                         outputs_val = net.forward(inputs_val)
 
                         # Compute loss and average across nodes
-                        loss_val = criterion(outputs_val, label_val, weight=class_weights)
+                        loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
                         loss_sum_val += loss_val
                         
                         #increase counter
@@ -469,7 +471,7 @@ def main(pargs):
                         checkpoint['amp'] = amp.state_dict()
                     torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
                 logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
-
+            
         # log the epoch
         logger.log_end(key = "epoch_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
         epoch += 1

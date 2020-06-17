@@ -108,4 +108,5 @@ class mlperf_logger(object):
         """
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
+                    
 
