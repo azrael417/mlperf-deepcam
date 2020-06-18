@@ -460,7 +460,7 @@ def main(pargs):
                     wandb.log({"eval_accuracy": iou_avg_val}, step=step)
 
                 if (iou_avg_val >= pargs.target_iou):
-                    logger.log_event(key = "target_accuracy_reached", metadata = {'epoch_num': epoch+1, 'step_num': step})
+                    logger.log_event(key = "target_accuracy_reached", value = pargs.target_iou, metadata = {'epoch_num': epoch+1, 'step_num': step})
                         
                 # set to train
                 net.train()

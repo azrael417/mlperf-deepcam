@@ -35,9 +35,12 @@ class CamDataset(Dataset):
             end_idx = start_idx + num_files_local
             self.files = self.all_files[start_idx:end_idx]
             self.global_size = self.comm_size * len(self.files)
-        
+            
         #my own files
         self.local_size = len(self.files)
+
+        #print sizes
+        print("Rank {} local size {} (global {})".format(comm_rank, self.local_size, self.global_size))
 
   
     def __init__(self, source, statsfile, channels, allow_uneven_distribution = False, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
