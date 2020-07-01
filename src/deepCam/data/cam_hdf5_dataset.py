@@ -22,10 +22,13 @@ class CamDataset(Dataset):
         self.global_size = len(self.all_files)
         if self.allow_uneven_distribution:
             # this setting covers the data set completely, but the
-            # last worker might get fewer samples than the rest
-            num_files_local = int(math.ceil(float(self.global_size) / float(self.comm_size)))
+            # last worker might get more samples than the rest
+            num_files_local = self.global_size // self.comm_size
             start_idx = self.comm_rank * num_files_local
-            end_idx = min([start_idx + num_files_local, self.global_size])
+            if self.comm_rank != (self.comm_size - 1):
+                end_idx = start_idx + num_files_local
+            else:
+                end_idx = self.global_size
             self.files = self.all_files[start_idx:end_idx]
         else:
             # here, every worker gets the same number of samples, 
@@ -40,7 +43,7 @@ class CamDataset(Dataset):
         self.local_size = len(self.files)
 
         #print sizes
-        print("Rank {} local size {} (global {})".format(comm_rank, self.local_size, self.global_size))
+        #print("Rank {} local size {} (global {})".format(self.comm_rank, self.local_size, self.global_size))
 
   
     def __init__(self, source, statsfile, channels, allow_uneven_distribution = False, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
