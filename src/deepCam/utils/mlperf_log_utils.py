@@ -43,9 +43,13 @@ class mlperf_logger(object):
 
         # create logging dir if it does not exist
         logdir = os.path.dirname(filename)
-        if not os.path.isdir(logdir):
-            os.makedirs(logdir)
-        
+        if self.comm_rank == 0:
+            if not os.path.isdir(logdir):
+                os.makedirs(logdir)
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.barrier()
+
+        # create config
         mllog.config(filename = filename)
         self.mllogger.logger.propagate = False
         self.log_event(key = constants.SUBMISSION_BENCHMARK,
