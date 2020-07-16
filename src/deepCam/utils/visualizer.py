@@ -1,6 +1,7 @@
 # The MIT License (MIT)
 #
-# Copyright (c) 2020 NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2018 Pyjcsx
+# Modifications Copyright (c) 2020 NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in
@@ -103,11 +104,6 @@ class CamVisualizer(object):
             self.my_map.contourf(self.x_map, self.y_map, data, 128, vmin=0., vmax=1.,
                                  cmap=self.my_cmap, levels=np.arange(0., 1., 0.02), ax=ax)
         
-            # Plot colorbar
-            #cbar = self.my_map.colorbar(ticks=np.arange(0.,1.,0.1), ax=ax)
-            #cbar.ax.set_ylabel('Integrated Water Vapor kg $m^{-2}$', size=32)
-            #cbar.ax.set_yticklabels(cbar.ax.get_yticklabels(), fontsize=28)
-        
             # Draw Tropical Cyclones & Atmospheric Rivers
             if idx == 0:
                 tc_contour = self.my_map.contour(self.x_map, self.y_map, p1, [0.5], linewidths=3, colors='orange', alpha=0.9, ax=ax)
@@ -126,10 +122,8 @@ class CamVisualizer(object):
 
             if idx == 0:
                 ax.set_title("Extreme Weather Patterns {:04d}-{:02d}-{:02d} (stream {:02d})".format(int(year), int(month), int(day), int(stream)), fontdict={'fontsize': 36})
-        
-        #pdf.savefig(bbox_inches='tight')
-        #mask_ex = plt.gcf()
-        #mask_ex.savefig(filename, bbox_inches='tight')
+
+        # save figure
         plt.gcf().savefig(output_filename, format="PNG", bbox_inches='tight')
         plt.clf()
         plt.close(fig)
