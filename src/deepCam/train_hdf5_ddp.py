@@ -293,7 +293,11 @@ def main(pargs):
 
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_set.global_size)
-    logger.log_event(key = "eval_samples", value = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size]))
+    if pargs.max_validation_steps is not None:
+        val_size = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size])
+    else:
+        val_size = validation_set.global_size
+    logger.log_event(key = "eval_samples", value = val_size)
 
     # do sanity check
     if pargs.max_validation_steps is not None:
