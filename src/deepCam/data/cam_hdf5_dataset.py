@@ -74,7 +74,7 @@ class CamDataset(Dataset):
         self.channels = channels
         self.shuffle = shuffle
         self.preprocess = preprocess
-        self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) ] )
+        self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) if x.endswith('.h5') ] )
         self.comm_size = comm_size
         self.comm_rank = comm_rank
         self.allow_uneven_distribution = allow_uneven_distribution
