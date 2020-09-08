@@ -408,6 +408,8 @@ def main(pargs):
             # validation step if desired
             if (step % pargs.validation_frequency == 0):
                 
+                logger.log_start(key = "eval_start", metadata = {'epoch_num': epoch+1})
+
                 #eval
                 net.eval()
                 
@@ -488,9 +490,11 @@ def main(pargs):
 
                 if (iou_avg_val >= pargs.target_iou):
                     logger.log_event(key = "target_accuracy_reached", value = pargs.target_iou, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                        
+
                 # set to train
                 net.train()
+
+                logger.log_end(key = "eval_stop", metadata = {'epoch_num': epoch+1})
             
             #save model if desired
             if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
