@@ -520,7 +520,7 @@ def main(pargs):
             break
 
     # run done
-    logger.log_end(key = "run_stop", sync = True)
+    logger.log_end(key = "run_stop", sync = True, metadata = {'status' : 'success'})
     
 
 if __name__ == "__main__":
