@@ -107,6 +107,7 @@ def main(pargs):
     log_file = os.path.normpath(os.path.join(pargs.output_dir, "logs", pargs.run_tag + ".log"))
     logger = mll.mlperf_logger(log_file, "deepcam", "Umbrella Corp.")
     logger.log_start(key = "init_start", sync = True)        
+    logger.log_event(key = "cache_clear")
     
     #set seed
     seed = 333
