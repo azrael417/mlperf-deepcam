@@ -185,7 +185,7 @@ def main(pargs):
 
     # initial logging
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-    logger.log_event(key = "optimizer", value = pargs.optimizer)
+    logger.log_event(key = "opt_name", value = pargs.optimizer)
 
     # Define architecture
     n_input_channels = len(pargs.channels)
