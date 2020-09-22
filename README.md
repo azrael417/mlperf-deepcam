@@ -42,6 +42,9 @@ https://portal.nersc.gov/project/dasrepo/deepcam/climseg-data-small/
 ## Before you run
 
 Make sure you have a working python environment with `pytorch`, `h5py`, `basemap` and `wandb` setup. 
+If you want to use learning rate warmup, you must also install the warmup-scheduler package
+available at https://github.com/ildoonet/pytorch-gradual-warmup-lr.
+
 The training uses Weights & Biases (WandB/W&B, https://app.wandb.ai) as logging facility. 
 In order to use it, please sign up, log in and create a new project. 
 Create a file named `.wandbirc` containing the user login and the API key as follows:
