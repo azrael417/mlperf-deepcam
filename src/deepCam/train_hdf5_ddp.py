@@ -250,7 +250,7 @@ def main(pargs):
             # Throw an error if the package is not found
             else:
                 raise Exception(f'Requested {pargs.lr_warmup_steps} but warmup '
-                                'scheduler not found. Install it from'
+                                'scheduler not found. Install it from '
                                 'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
         else:
             scheduler = scheduler_after
