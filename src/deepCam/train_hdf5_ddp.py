@@ -183,9 +183,13 @@ def main(pargs):
                     config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
 
 
-    # initial logging
+    # Logging hyperparameters
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-    logger.log_event(key = "optimizer", value = pargs.optimizer)
+    logger.log_event(key = "opt_name", value = pargs.optimizer)
+    logger.log_event(key = "opt_base_learning_rate", value = pargs.start_lr * pargs.lr_warmup_factor)
+    logger.log_event(key = "opt_learning_rate_warmup_steps", value = pargs.lr_warmup_steps)
+    logger.log_event(key = "opt_learning_rate_warmup_factor", value = pargs.lr_warmup_factor)
+    logger.log_event(key = "opt_epsilon", value = pargs.adam_eps)
 
     # Define architecture
     n_input_channels = len(pargs.channels)
