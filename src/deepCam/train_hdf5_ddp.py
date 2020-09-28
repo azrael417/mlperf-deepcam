@@ -487,9 +487,9 @@ def main(pargs):
                             break
                         
                 # average the validation loss
-                dist.reduce(count_sum_val, dst=0, op=dist.ReduceOp.SUM)
-                dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
-                dist.reduce(iou_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.all_reduce(count_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.all_reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.all_reduce(iou_sum_val, dst=0, op=dist.ReduceOp.SUM)
                 loss_avg_val = loss_sum_val.item() / count_sum_val.item()
                 iou_avg_val = iou_sum_val.item() / count_sum_val.item()
                 
