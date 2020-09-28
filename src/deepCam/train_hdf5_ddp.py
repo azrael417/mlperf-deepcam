@@ -245,11 +245,20 @@ def main(pargs):
     if pargs.lr_schedule:
         scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
-        if have_warmup_scheduler and (pargs.lr_warmup_steps > 0):
-            scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor, total_epoch=pargs.lr_warmup_steps, after_scheduler=scheduler_after)
+        # LR warmup
+        if pargs.lr_warmup_steps > 0:
+            if have_warmup_scheduler:
+                scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor,
+                                                   total_epoch=pargs.lr_warmup_steps,
+                                                   after_scheduler=scheduler_after)
+            # Throw an error if the package is not found
+            else:
+                raise Exception(f'Requested {pargs.lr_warmup_steps} LR warmup steps '
+                                'but warmup scheduler not found. Install it from '
+                                'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
         else:
             scheduler = scheduler_after
-        
+
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
     dist.broadcast(steptens, src = 0)
