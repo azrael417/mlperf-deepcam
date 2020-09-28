@@ -328,6 +328,7 @@ def main(pargs):
     step = start_step
     epoch = start_epoch
     current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
+    stop_training = False
     net.train()
 
     # start trining
@@ -503,6 +504,7 @@ def main(pargs):
 
                 if (iou_avg_val >= pargs.target_iou):
                     logger.log_event(key = "target_accuracy_reached", value = pargs.target_iou, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                    stop_training = True
 
                 # set to train
                 net.train()
@@ -523,18 +525,22 @@ def main(pargs):
                         checkpoint['amp'] = amp.state_dict()
                     torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
                 logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+
+            # Stop training?
+            if stop_training:
+                break
             
         # log the epoch
         logger.log_end(key = "epoch_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
         epoch += 1
         
         # are we done?
-        if epoch >= pargs.max_epochs:
+        if epoch >= pargs.max_epochs or stop_training:
             break
 
     # run done
     logger.log_end(key = "run_stop", sync = True, metadata = {'status' : 'success'})
-    
+
 
 if __name__ == "__main__":
 
