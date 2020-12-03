@@ -61,20 +61,24 @@ try:
 except ImportError:
     pass
 
-#vis stuff
+# vis stuff
 from PIL import Image
 from utils import visualizer as vizc
 
-#DDP
+# DDP
 import torch.distributed as dist
+from torch.nn.parallel.distributed import DistributedDataParallel as DDP
+
+# APEX
 try:
-    from apex import amp
     import apex.optimizers as aoptim
-    from apex.parallel import DistributedDataParallel as DDP
     have_apex = True
 except ImportError:
-    from torch.nn.parallel.distributed import DistributedDataParallel as DDP
+    
     have_apex = False
+
+# amp
+import torch.cuda.amp as amp
 
 #comm wrapper
 from utils import comm
@@ -172,7 +176,7 @@ def main(pargs):
             config.adam_eps = pargs.adam_eps
             config.weight_decay = pargs.weight_decay
             config.model_prefix = pargs.model_prefix
-            config.amp_opt_level = pargs.amp_opt_level
+            config.enable_amp = pargs.enable_amp
             config.loss_weight_pow = pargs.loss_weight_pow
             config.lr_warmup_steps = pargs.lr_warmup_steps
             config.lr_warmup_factor = pargs.lr_warmup_factor
@@ -218,10 +222,9 @@ def main(pargs):
         optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     else:
         raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
-
-    if have_apex:
-        #wrap model and opt into amp
-        net, optimizer = amp.initialize(net, optimizer, opt_level = pargs.amp_opt_level)
+    
+    # gradient scaler
+    gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
     #make model distributed
     net = DDP(net)
@@ -235,8 +238,6 @@ def main(pargs):
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer'])
         net.load_state_dict(checkpoint['model'])
-        if have_apex:
-            amp.load_state_dict(checkpoint['amp'])
     else:
         start_step = 0
         start_epoch = 0
@@ -349,19 +350,17 @@ def main(pargs):
             label = label.to(device)
             
             # forward pass
-            outputs = net.forward(inputs)
+            with amp.autocast(enabled = pargs.enable_amp):
+                outputs = net.forward(inputs)
             
-            # Compute loss and average across nodes
-            loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
+                # Compute loss and average across nodes
+                loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
             
             # Backprop
-            optimizer.zero_grad()
-            if have_apex:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none = True)
+            gscaler.scale(loss).backward()
+            gscaler.step(optimizer)
+            gscaler.update()
 
             # step counter
             step += 1
@@ -445,11 +444,12 @@ def main(pargs):
                         label_val = label_val.to(device)
                         
                         # forward pass
-                        outputs_val = net.forward(inputs_val)
+                        with amp.autocast(enabled = pargs.enable_amp):
+                            outputs_val = net.forward(inputs_val)
 
-                        # Compute loss and average across nodes
-                        loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
-                        loss_sum_val += loss_val
+                            # Compute loss and average across nodes
+                            loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
+                            loss_sum_val += loss_val
                         
                         #increase counter
                         count_sum_val += 1.
@@ -520,9 +520,7 @@ def main(pargs):
                         'epoch': epoch,
                         'model': net.state_dict(),
                         'optimizer': optimizer.state_dict()
-		    }
-                    if have_apex:
-                        checkpoint['amp'] = amp.state_dict()
+		            }
                     torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
                 logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
 
@@ -572,7 +570,7 @@ if __name__ == "__main__":
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
-    AP.add_argument("--amp_opt_level", type=str, default="O0", help="AMP optimization level")
+    AP.add_argument("--enable_amp", action='store_true')
     AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     pargs = AP.parse_args()
