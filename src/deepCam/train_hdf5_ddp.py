@@ -73,8 +73,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 try:
     import apex.optimizers as aoptim
     have_apex = True
-except ImportError:
-    
+except ImportError:    
     have_apex = False
 
 # amp
@@ -124,6 +123,7 @@ def main(pargs):
         torch.cuda.manual_seed(seed)
         #necessary for AMP to work
         torch.cuda.set_device(device)
+        torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
 
@@ -227,7 +227,7 @@ def main(pargs):
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
     #make model distributed
-    net = DDP(net)
+    net = DDP(net, device_ids=[device.index], output_device=[device.index])
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
@@ -357,7 +357,8 @@ def main(pargs):
                 loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
             
             # Backprop
-            optimizer.zero_grad(set_to_none = True)
+            #optimizer.zero_grad(set_to_none = True)
+            optimizer.zero_grad()
             gscaler.scale(loss).backward()
             gscaler.step(optimizer)
             gscaler.update()
@@ -370,7 +371,7 @@ def main(pargs):
                 scheduler.step()
 
             #visualize if requested
-            if (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
+            if visualize and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
                 # Compute predictions
                 predictions = torch.max(outputs, 1)[1]
                 
@@ -460,7 +461,7 @@ def main(pargs):
                         iou_sum_val += iou_val
 
                         # Visualize
-                        if (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
+                        if visualize and (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
                             #extract sample id and data tensors
                             sample_idx = np.random.randint(low=0, high=label_val.shape[0])
                             plot_input = inputs_val.detach()[sample_idx, 0,...].cpu().numpy()
@@ -520,7 +521,7 @@ def main(pargs):
                         'epoch': epoch,
                         'model': net.state_dict(),
                         'optimizer': optimizer.state_dict()
-		            }
+		    }
                     torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
                 logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
 
