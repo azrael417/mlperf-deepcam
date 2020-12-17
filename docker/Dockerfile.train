@@ -21,6 +21,12 @@
 
 FROM nvcr.io/nvidia/pytorch:20.11-py3
 
+# upgrade dali
+COPY no-git/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl /tmp/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
+RUN cd /tmp && pip uninstall -y nvidia-dali-cuda110 && \
+    pip install nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl && \
+    rm nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
+
 #Install conda prereqs
 RUN conda config --add channels conda-forge \
     && conda install matplotlib basemap basemap-data-hires pillow h5py

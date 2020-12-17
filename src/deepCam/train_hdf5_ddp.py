@@ -45,12 +45,14 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torch.utils.data import DistributedSampler
 
 # Custom
 from utils import utils
 from utils import losses
 from utils import parsing_helpers as ph
 from data import cam_hdf5_dataset as cam
+from data import cam_numpy_dali_dataset as cam_dali
 from architecture import deeplab_xception
 
 #warmup scheduler
@@ -73,7 +75,8 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 try:
     import apex.optimizers as aoptim
     have_apex = True
-except ImportError:    
+except ImportError:
+    from utils import optimizer as uoptim
     have_apex = False
 
 # amp
@@ -113,7 +116,7 @@ def main(pargs):
     logger.log_event(key = "cache_clear")
     
     #set seed
-    seed = 333
+    seed = pargs.seed
     logger.log_event(key = "seed", value = seed)
     
     # Some setup
@@ -128,7 +131,8 @@ def main(pargs):
         device = torch.device("cpu")
 
     #visualize?
-    visualize = (pargs.training_visualization_frequency > 0) or (pargs.validation_visualization_frequency > 0)
+    visualize_train = (pargs.training_visualization_frequency > 0)
+    visualize_validation = (pargs.validation_visualization_frequency > 0)
         
     #set up directories
     root_dir = os.path.join(pargs.data_dir_prefix)
@@ -137,7 +141,7 @@ def main(pargs):
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
-        if visualize and not os.path.isdir(plot_dir):
+        if (visualize_train or visualize_validation) and not os.path.isdir(plot_dir):
             os.makedirs(plot_dir)
     
     # Setup WandB
@@ -182,7 +186,7 @@ def main(pargs):
             config.lr_warmup_factor = pargs.lr_warmup_factor
             
             # lr schedule if applicable
-            if pargs.lr_schedule:
+            if pargs.lr_schedule is not None:
                 for key in pargs.lr_schedule:
                     config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
 
@@ -218,8 +222,11 @@ def main(pargs):
         optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
     elif pargs.optimizer == "AdamW":
         optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-    elif have_apex and (pargs.optimizer == "LAMB"):
-        optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+    elif pargs.optimizer == "LAMB":
+        if have_apex:
+            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+        else:
+            optimizer = uoptim.Lamb(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay, clamp_value = torch.iinfo(torch.int32).max)
     else:
         raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
     
@@ -269,49 +276,105 @@ def main(pargs):
     #hvd.broadcast_optimizer_state(optimizer, root_rank = 0)
 
     #unpack the bcasted tensor
-    start_step = steptens.cpu().numpy()[0]
-    start_epoch = steptens.cpu().numpy()[1]
+    start_step = int(steptens.cpu().numpy()[0])
+    start_epoch = int(steptens.cpu().numpy()[1])
 
     # Set up the data feeder
-    # train
-    train_dir = os.path.join(root_dir, "train")
-    train_set = cam.CamDataset(train_dir, 
-                               statsfile = os.path.join(root_dir, 'stats.h5'),
-                               channels = pargs.channels,
-                               allow_uneven_distribution = False,
-                               shuffle = True, 
-                               preprocess = True,
-                               comm_size = comm_size,
-                               comm_rank = comm_rank)
-    train_loader = DataLoader(train_set,
-                              pargs.local_batch_size,
-                              num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
-                              pin_memory = True,
-                              drop_last = True)
+    if not pargs.enable_dali:
+        train_dir = os.path.join(root_dir, "train")
+        train_set = cam.CamDataset(train_dir, 
+                                   statsfile = os.path.join(root_dir, 'stats.h5'),
+                                   channels = pargs.channels,
+                                   allow_uneven_distribution = False,
+                                   shuffle = True, 
+                                   preprocess = True,
+                                   comm_size = 1,
+                                   comm_rank = 0)
+
+        distributed_train_sampler = DistributedSampler(train_set,
+                                                       num_replicas = comm_size,
+                                                       rank = comm_rank,
+                                                       shuffle = True,
+                                                       drop_last = True)
+    
+        train_loader = DataLoader(train_set,
+                                  pargs.local_batch_size,
+                                  num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                                  sampler = distributed_train_sampler,
+                                  pin_memory = True,
+                                  drop_last = True)
+
+        train_size = train_set.global_size
+
+    else:
+        train_dir = os.path.join(root_dir, "numpy", "train")
+        train_loader = cam_dali.CamDaliDataloader(train_dir,
+                                                  'data-*.npy',
+                                                  'label-*.npy',
+                                                  os.path.join(root_dir, 'stats.h5'),
+                                                  pargs.local_batch_size,
+                                                  num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                                                  device = device,
+                                                  num_shards = comm_size,
+                                                  shard_id = comm_rank,
+                                                  stick_to_shard = False,
+                                                  shuffle = True,
+                                                  is_validation = False,
+                                                  lazy_init = False,
+                                                  read_gpu = False,
+                                                  use_mmap = False,
+                                                  seed = seed)
+        train_loader.init_iterator()
+        train_size = train_loader.global_size
     
     # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
-    validation_dir = os.path.join(root_dir, "validation")
-    validation_set = cam.CamDataset(validation_dir, 
-                               statsfile = os.path.join(root_dir, 'stats.h5'),
-                               channels = pargs.channels,
-                               allow_uneven_distribution = True,
-                               shuffle = (pargs.max_validation_steps is not None),
-                               preprocess = True,
-                               comm_size = comm_size,
-                               comm_rank = comm_rank)
-    # use batch size = 1 here to make sure that we do not drop a sample
-    validation_loader = DataLoader(validation_set,
-                                   1,
-                                   num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
-                                   pin_memory = True,
-                                   drop_last = True)
+    if not pargs.enable_dali:
+        validation_dir = os.path.join(root_dir, "validation")
+        validation_set = cam.CamDataset(validation_dir, 
+                                        statsfile = os.path.join(root_dir, 'stats.h5'),
+                                        channels = pargs.channels,
+                                        allow_uneven_distribution = True,
+                                        shuffle = (pargs.max_validation_steps is not None),
+                                        preprocess = True,
+                                        comm_size = comm_size,
+                                        comm_rank = comm_rank)
+    
+        # use batch size = 1 here to make sure that we do not drop a sample
+        validation_loader = DataLoader(validation_set,
+                                       1,
+                                       num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                                       pin_memory = True,
+                                       drop_last = False)
+
+        validation_size = validation_set.global_size
+        
+    else:
+        validation_dir = os.path.join(root_dir, "numpy", "validation")
+        validation_loader = cam_dali.CamDaliDataloader(validation_dir,
+                                                       'data-*.npy',
+                                                       'label-*.npy',
+                                                       os.path.join(root_dir, 'stats.h5'),
+                                                       pargs.local_batch_size,
+                                                       num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
+                                                       device = device,
+                                                       num_shards = comm_size,
+                                                       shard_id = comm_rank,
+                                                       stick_to_shard = True,
+                                                       is_validation = True,
+                                                       shuffle = True,
+                                                       lazy_init = False,
+                                                       read_gpu = False,
+                                                       use_mmap = False,
+                                                       seed = seed)
+        validation_loader.init_iterator()
+        validation_size = validation_loader.global_size
 
     # log size of datasets
-    logger.log_event(key = "train_samples", value = train_set.global_size)
+    logger.log_event(key = "train_samples", value = train_size)
     if pargs.max_validation_steps is not None:
-        val_size = min([validation_set.global_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size])
+        val_size = min([validation_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size])
     else:
-        val_size = validation_set.global_size
+        val_size = validation_size
     logger.log_event(key = "eval_samples", value = val_size)
 
     # do sanity check
@@ -319,7 +382,7 @@ def main(pargs):
         logger.log_event(key = "invalid_submission")
     
     #for visualization
-    if visualize:
+    if (visualize_train or visualize_validation):
         viz = vizc.CamVisualizer()   
     
     # Train network
@@ -341,6 +404,9 @@ def main(pargs):
 
         # start epoch
         logger.log_start(key = "epoch_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync=True)
+
+        if not pargs.enable_dali:
+            distributed_train_sampler.set_epoch(epoch)
 
         # epoch loop
         for inputs, label, filename in train_loader:
@@ -371,7 +437,7 @@ def main(pargs):
                 scheduler.step()
 
             #visualize if requested
-            if visualize and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
+            if visualize_train and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
                 # Compute predictions
                 predictions = torch.max(outputs, 1)[1]
                 
@@ -445,12 +511,14 @@ def main(pargs):
                         label_val = label_val.to(device)
                         
                         # forward pass
-                        with amp.autocast(enabled = pargs.enable_amp):
-                            outputs_val = net.forward(inputs_val)
+                        #with amp.autocast(enabled = pargs.enable_amp):
+                        outputs_val = net.forward(inputs_val)
 
-                            # Compute loss and average across nodes
-                            loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
-                            loss_sum_val += loss_val
+                        # Compute loss
+                        loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
+
+                        # accumulate loss
+                        loss_sum_val += loss_val
                         
                         #increase counter
                         count_sum_val += 1.
@@ -461,7 +529,7 @@ def main(pargs):
                         iou_sum_val += iou_val
 
                         # Visualize
-                        if visualize and (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
+                        if visualize_validation and (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
                             #extract sample id and data tensors
                             sample_idx = np.random.randint(low=0, high=label_val.shape[0])
                             plot_input = inputs_val.detach()[sample_idx, 0,...].cpu().numpy()
@@ -488,9 +556,9 @@ def main(pargs):
                             break
                         
                 # average the validation loss
-                dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM)
-                dist.all_reduce(loss_sum_val, op=dist.ReduceOp.SUM)
-                dist.all_reduce(iou_sum_val, op=dist.ReduceOp.SUM)
+                dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM, async_op=False)
+                dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
+                dist.all_reduce(iou_sum_val, op=dist.ReduceOp.SUM, async_op=False)
                 loss_avg_val = loss_sum_val.item() / count_sum_val.item()
                 iou_avg_val = iou_sum_val.item() / count_sum_val.item()
                 
@@ -572,8 +640,10 @@ if __name__ == "__main__":
     AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--enable_amp", action='store_true')
+    AP.add_argument("--enable_dali", action='store_true')
     AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
+    AP.add_argument("--seed", default=333, type=int)
     pargs = AP.parse_args()
     
     #run the stuff

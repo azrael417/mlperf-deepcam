@@ -43,15 +43,18 @@ class CamDataset(Dataset):
         #shard the dataset
         self.global_size = len(self.all_files)
         if self.allow_uneven_distribution:
-            # this setting covers the data set completely, but the
-            # last worker might get more samples than the rest
+            # this setting covers the data set completely
+
+            # deal with bulk
             num_files_local = self.global_size // self.comm_size
             start_idx = self.comm_rank * num_files_local
-            if self.comm_rank != (self.comm_size - 1):
-                end_idx = start_idx + num_files_local
-            else:
-                end_idx = self.global_size
+            end_idx = start_idx + num_files_local
             self.files = self.all_files[start_idx:end_idx]
+
+            # deal with remainder
+            for idx in range(self.comm_size * num_files_local, self.global_size):
+                if idx % self.comm_size == self.comm_rank:
+                    self.files.append(self.all_files[idx])
         else:
             # here, every worker gets the same number of samples, 
             # potentially under-sampling the data
