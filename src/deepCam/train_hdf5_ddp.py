@@ -354,7 +354,7 @@ def main(pargs):
                                                        'data-*.npy',
                                                        'label-*.npy',
                                                        os.path.join(root_dir, 'stats.h5'),
-                                                       pargs.local_batch_size,
+                                                       1,
                                                        num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
                                                        device = device,
                                                        num_shards = comm_size,
@@ -368,7 +368,7 @@ def main(pargs):
                                                        seed = seed)
         validation_loader.init_iterator()
         validation_size = validation_loader.global_size
-
+        
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
     if pargs.max_validation_steps is not None:
@@ -410,10 +410,11 @@ def main(pargs):
 
         # epoch loop
         for inputs, label, filename in train_loader:
-            
-            # send to device
-            inputs = inputs.to(device)
-            label = label.to(device)
+
+            if not pargs.enable_dali:
+                # send to device
+                inputs = inputs.to(device)
+                label = label.to(device)
             
             # forward pass
             with amp.autocast(enabled = pargs.enable_amp):
@@ -505,15 +506,20 @@ def main(pargs):
                     # only print once per eval at most
                     visualized = False
                     for inputs_val, label_val, filename_val in validation_loader:
-                        
-                        #send to device
-                        inputs_val = inputs_val.to(device)
-                        label_val = label_val.to(device)
+
+                        if not pargs.enable_dali:
+                            #send to device
+                            inputs_val = inputs_val.to(device)
+                            label_val = label_val.to(device)
+                        else:
+                            if inputs_val.numel() == 0:
+                                # we are done, break
+                                break
                         
                         # forward pass
                         #with amp.autocast(enabled = pargs.enable_amp):
                         outputs_val = net.forward(inputs_val)
-
+                        
                         # Compute loss
                         loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
 

@@ -22,7 +22,7 @@ class NumpyReadPipeline(Pipeline):
                                     stick_to_shard = stick_to_shard,
                                     shuffle_after_epoch = shuffle,
                                     prefetch_queue_depth = 2,
-                                    cache_header_information = True,
+                                    cache_header_information = False,
                                     register_buffers = True,
                                     pad_last_batch = True,
                                     dont_use_mmap = not use_mmap,
@@ -36,7 +36,7 @@ class NumpyReadPipeline(Pipeline):
                                      stick_to_shard = stick_to_shard,
                                      shuffle_after_epoch = shuffle,
                                      prefetch_queue_depth = 2,
-                                     cache_header_information = True,
+                                     cache_header_information = False,
                                      register_buffers = True,
                                      pad_last_batch = True,
                                      dont_use_mmap = not use_mmap,
@@ -127,8 +127,8 @@ class CamDaliDataloader(object):
     def init_iterator(self):
         self.pipeline.build()
         self.iterator = DALIGenericIterator([self.pipeline], ['data', 'label'], auto_reset = True,
-                                            reader_name = "data", last_batch_policy = LastBatchPolicy.DROP)
-                                            #last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP,
+                                            reader_name = "data",
+                                            last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP)
         self.epoch_size = self.pipeline.epoch_size()
         
         
