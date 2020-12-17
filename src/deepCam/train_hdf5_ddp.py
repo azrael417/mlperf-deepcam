@@ -214,7 +214,7 @@ def main(pargs):
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
     fpw_1 = 2.61461122397522257612
     fpw_2 = 1.71641974795896018744
-    criterion = losses.fp_loss
+    criterion = losses.FPLoss(class_weights, fpw_1, fpw_2).to(device)
 
     #select optimizer
     optimizer = None
@@ -421,7 +421,7 @@ def main(pargs):
                 outputs = net.forward(inputs)
             
                 # Compute loss and average across nodes
-                loss = criterion(outputs, label, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
+                loss = criterion(outputs, label)
             
             # Backprop
             #optimizer.zero_grad(set_to_none = True)
@@ -513,15 +513,15 @@ def main(pargs):
                             label_val = label_val.to(device)
                         else:
                             if inputs_val.numel() == 0:
-                                # we are done, break
-                                break
+                                # we are done
+                                continue
                         
                         # forward pass
                         #with amp.autocast(enabled = pargs.enable_amp):
                         outputs_val = net.forward(inputs_val)
                         
                         # Compute loss
-                        loss_val = criterion(outputs_val, label_val, weight=class_weights, fpw_1=fpw_1, fpw_2=fpw_2)
+                        loss_val = criterion(outputs_val, label_val)
 
                         # accumulate loss
                         loss_sum_val += loss_val

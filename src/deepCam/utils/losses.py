@@ -25,6 +25,45 @@ from torch.autograd import Variable
 from torch import nn
 import numpy as np
 
+class FPLoss(nn.Module):
+
+    def __init__(self, weight, fpw_1=0, fpw_2=0):
+
+        # init superclass
+        super(FPLoss, self).__init__()
+        
+        # collect constants
+        self.fpw_1 = fpw_1
+        self.fpw_2 = fpw_2
+
+        # instantiate loss
+        self.criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(weight)).float(), reduction='none')
+
+    def forward(self, logit, target):
+
+        # squeeze target
+        target = target.squeeze(1)
+        
+        # get losses and predictions
+        losses = self.criterion(logit, target.long())
+        preds = torch.max(logit, 1)[1]
+
+        #is fp 1
+        is_fp_one = (torch.eq(preds, 1) & torch.ne(preds, 1)).float()
+        fp_matrix_one = (is_fp_one * self.fpw_1) + 1
+        losses = torch.mul(fp_matrix_one, losses)
+
+        #is fp 2
+        is_fp_two = (torch.eq(preds, 2) & torch.ne(preds, 2)).float()
+        fp_matrix_two = (is_fp_two * self.fpw_2) + 1
+        losses = torch.mul(fp_matrix_two, losses)
+
+        # average
+        loss = torch.mean(losses)
+
+        return loss
+
+        
 def fp_loss(logit, target, weight, fpw_1=0, fpw_2=0):
     
     n, c, h, w = logit.size()
@@ -44,7 +83,7 @@ def fp_loss(logit, target, weight, fpw_1=0, fpw_2=0):
     fp_matrix_one = (is_fp_one * fpw_1) + 1
     losses = torch.mul(fp_matrix_one, losses)
         
-    #is fp 1
+    #is fp 2
     is_fp_two = (torch.eq(preds, 2) & torch.ne(preds, 2)).float()
     fp_matrix_two = (is_fp_two * fpw_2) + 1
     losses = torch.mul(fp_matrix_two, losses)
