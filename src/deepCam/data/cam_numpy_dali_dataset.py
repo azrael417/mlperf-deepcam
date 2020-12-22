@@ -9,14 +9,14 @@ import nvidia.dali.ops as ops
 from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 
 class NumpyReadPipeline(Pipeline):
-    def __init__(self, file_root, data_filter, label_filter, batch_size, mean, stddev, num_threads,
+    def __init__(self, file_root, data_files, label_files, batch_size, mean, stddev, num_threads,
                  device, io_device, num_shards=1, shard_id=0, shuffle=False, stick_to_shard=False,
-                 is_validation=False, use_mmap=True, seed=333):
+                 is_validation=False, lazy_init = False, use_mmap=True, seed=333):
         super(NumpyReadPipeline, self).__init__(batch_size, num_threads, device.index, seed)
-
+        
         self.data = ops.NumpyReader(device = io_device,
                                     file_root = file_root,
-                                    file_filter = data_filter,
+                                    files = data_files,
                                     num_shards = num_shards,
                                     shard_id = shard_id,
                                     stick_to_shard = stick_to_shard,
@@ -26,11 +26,12 @@ class NumpyReadPipeline(Pipeline):
                                     register_buffers = True,
                                     pad_last_batch = True,
                                     dont_use_mmap = not use_mmap,
+                                    lazy_init = lazy_init,
                                     seed = seed)
         
         self.label = ops.NumpyReader(device = io_device,
                                      file_root = file_root,
-                                     file_filter = label_filter,
+                                     files = label_files,
                                      num_shards = num_shards,
                                      shard_id = shard_id,
                                      stick_to_shard = stick_to_shard,
@@ -40,6 +41,7 @@ class NumpyReadPipeline(Pipeline):
                                      register_buffers = True,
                                      pad_last_batch = True,
                                      dont_use_mmap = not use_mmap,
+                                     lazy_init = lazy_init,
                                      seed = seed)
 
         self.normalize = ops.Normalize(device = "gpu", mean = mean, stddev = stddev, scale = 1.)
@@ -64,14 +66,26 @@ class NumpyReadPipeline(Pipeline):
 
 class CamDaliDataloader(object):
 
-    def init_files(self, root_dir, prefix_data, prefix_label, statsfile):
+    def init_files(self, root_dir, prefix_data, prefix_label, statsfile, file_list_data = None, file_list_label = None):
         self.root_dir = root_dir
         self.prefix_data = prefix_data
         self.prefix_label = prefix_label
 
         # get files
-        self.data_files = glob.glob(os.path.join(self.root_dir, self.prefix_data))
-        self.label_files = glob.glob(os.path.join(self.root_dir, self.prefix_label))
+        # data
+        if file_list_data is not None and os.path.isfile(os.path.join(root_dir, file_list_data)):
+            with open(os.path.join(root_dir, file_list_data), "r") as f:
+                token = f.readlines()
+            self.data_files = [os.path.join(root_dir, x.strip()) for x in token]
+        else:
+            self.data_files = glob.glob(os.path.join(self.root_dir, self.prefix_data))
+        # label
+        if file_list_label is not None and os.path.isfile(os.path.join(root_dir, file_list_label)):
+            with open(os.path.join(root_dir, file_list_label), "r") as f:
+                token = f.readlines()
+            self.label_files = [os.path.join(root_dir, x.strip()) for x in token]
+        else:
+            self.label_files = glob.glob(os.path.join(self.root_dir, self.prefix_label))
 
         # get shapes
         self.data_shape = np.load(self.data_files[0]).shape
@@ -101,8 +115,8 @@ class CamDaliDataloader(object):
             
         # define pipes
         self.pipeline = NumpyReadPipeline(file_root = self.root_dir,
-                                          data_filter = self.prefix_data,
-                                          label_filter = self.prefix_label,
+                                          data_files = [os.path.basename(x) for x in self.data_files],
+                                          label_files = [os.path.basename(x) for x in self.label_files],
                                           batch_size = self.batchsize,
                                           mean = self.data_mean,
                                           stddev = self.data_stddev,
@@ -113,11 +127,13 @@ class CamDaliDataloader(object):
                                           shard_id = self.shard_id,
                                           shuffle = self.shuffle,
                                           is_validation = self.is_validation,
+                                          lazy_init = self.lazy_init,
                                           use_mmap = self.use_mmap,
                                           seed = self.seed)
         
         # build pipes
         self.global_size = len(self.data_files)
+        self.pipeline.build()
 
         # init iterator
         if not self.lazy_init:
@@ -125,7 +141,6 @@ class CamDaliDataloader(object):
         
 
     def init_iterator(self):
-        self.pipeline.build()
         self.iterator = DALIGenericIterator([self.pipeline], ['data', 'label'], auto_reset = True,
                                             reader_name = "data",
                                             last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP)
@@ -133,7 +148,8 @@ class CamDaliDataloader(object):
         
         
     def __init__(self, root_dir, prefix_data, prefix_label, statsfile,
-                 batchsize, num_threads = 1, device = torch.device("cpu"),
+                 batchsize, file_list_data = None, file_list_label = None,
+                 num_threads = 1, device = torch.device("cpu"),
                  num_shards = 1, shard_id = 0, stick_to_shard = False,
                  shuffle = False, is_validation = False,
                  lazy_init = False, use_mmap = True, read_gpu = False, seed = 333):
@@ -157,7 +173,8 @@ class CamDaliDataloader(object):
         self.epoch_size = 0
 
         # init files
-        self.init_files(root_dir, prefix_data, prefix_label, statsfile)
+        self.init_files(root_dir, prefix_data, prefix_label,
+                        statsfile, file_list_data, file_list_label)
         
 
     @property

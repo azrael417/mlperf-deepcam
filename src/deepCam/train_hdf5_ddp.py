@@ -208,6 +208,9 @@ def main(pargs):
                                           rank = comm_rank)
     net.to(device)
 
+    if pargs.enable_nhwc:
+        net = net.to(memory_format = torch.channels_last)
+
     #select loss
     loss_pow = pargs.loss_weight_pow
     #some magic numbers
@@ -313,6 +316,8 @@ def main(pargs):
                                                   'label-*.npy',
                                                   os.path.join(root_dir, 'stats.h5'),
                                                   pargs.local_batch_size,
+                                                  file_list_data = "train_files_data.lst",
+                                                  file_list_label = "train_files_label.lst",
                                                   num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
                                                   device = device,
                                                   num_shards = comm_size,
@@ -320,11 +325,10 @@ def main(pargs):
                                                   stick_to_shard = False,
                                                   shuffle = True,
                                                   is_validation = False,
-                                                  lazy_init = False,
+                                                  lazy_init = True,
                                                   read_gpu = False,
                                                   use_mmap = False,
                                                   seed = seed)
-        train_loader.init_iterator()
         train_size = train_loader.global_size
     
     # validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
@@ -355,18 +359,19 @@ def main(pargs):
                                                        'label-*.npy',
                                                        os.path.join(root_dir, 'stats.h5'),
                                                        1,
+                                                       file_list_data = "validation_files_data.lst",
+                                                       file_list_label = "validation_files_label.lst",
                                                        num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
                                                        device = device,
                                                        num_shards = comm_size,
                                                        shard_id = comm_rank,
                                                        stick_to_shard = True,
-                                                       is_validation = True,
                                                        shuffle = True,
-                                                       lazy_init = False,
+                                                       is_validation = True,
+                                                       lazy_init = True,
                                                        read_gpu = False,
                                                        use_mmap = False,
                                                        seed = seed)
-        validation_loader.init_iterator()
         validation_size = validation_loader.global_size
         
     # log size of datasets
@@ -399,6 +404,11 @@ def main(pargs):
     logger.log_end(key = "init_stop", sync = True)
     logger.log_start(key = "run_start", sync = True)
 
+    # start prefetching
+    if pargs.enable_dali:
+        train_loader.init_iterator()
+        validation_loader.init_iterator()
+
     # training loop
     while True:
 
@@ -415,10 +425,18 @@ def main(pargs):
                 # send to device
                 inputs = inputs.to(device)
                 label = label.to(device)
+
+            # to NHWC
+            if pargs.enable_nhwc:
+                inputs = inputs.contiguous(memory_format = torch.channels_last)
             
             # forward pass
             with amp.autocast(enabled = pargs.enable_amp):
                 outputs = net.forward(inputs)
+
+                # to NCHW
+                if pargs.enable_nhwc:
+                    outputs = outputs.contiguous(memory_format = torch.contiguous_format)
             
                 # Compute loss and average across nodes
                 loss = criterion(outputs, label)
@@ -515,10 +533,18 @@ def main(pargs):
                             if inputs_val.numel() == 0:
                                 # we are done
                                 continue
-                        
+
+                        # to NHWC
+                        if pargs.enable_nhwc:
+                            inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
+                            
                         # forward pass
                         #with amp.autocast(enabled = pargs.enable_amp):
                         outputs_val = net.forward(inputs_val)
+
+                        # NCHW
+                        if pargs.enable_nhwc:
+                            outputs_val = outputs_val.contiguous(memory_format = torch.contiguous_format)
                         
                         # Compute loss
                         loss_val = criterion(outputs_val, label_val)
@@ -647,6 +673,7 @@ if __name__ == "__main__":
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--enable_amp", action='store_true')
     AP.add_argument("--enable_dali", action='store_true')
+    AP.add_argument("--enable_nhwc", action='store_true')
     AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     AP.add_argument("--seed", default=333, type=int)
