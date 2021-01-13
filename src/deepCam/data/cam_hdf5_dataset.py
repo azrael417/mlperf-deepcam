@@ -71,12 +71,19 @@ class CamDataset(Dataset):
         #print("Rank {} local size {} (global {})".format(self.comm_rank, self.local_size, self.global_size))
 
   
-    def __init__(self, source, statsfile, channels, allow_uneven_distribution = False, shuffle = False, preprocess = True, comm_size = 1, comm_rank = 0, seed = 12345):
+    def __init__(self, source, statsfile, channels,
+                 allow_uneven_distribution = False,
+                 shuffle = False,
+                 preprocess = True,
+                 augmentations = [],
+                 comm_size = 1, comm_rank = 0, seed = 12345):
+        
         self.source = source
         self.statsfile = statsfile
         self.channels = channels
         self.shuffle = shuffle
         self.preprocess = preprocess
+        self.augmentations = augmentations
         self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) if x.endswith('.h5') ] )
         self.comm_size = comm_size
         self.comm_rank = comm_rank
@@ -107,6 +114,10 @@ class CamDataset(Dataset):
         if comm_rank == 0:
             print("Initialized dataset with ", self.global_size, " samples.")
 
+        #rng for augmentations
+        if self.augmentations:
+            self.rng = np.random.default_rng()
+
 
     def __len__(self):
         return self.local_size
@@ -130,5 +141,19 @@ class CamDataset(Dataset):
         
         #preprocess
         data = self.data_scale * (data - self.data_shift)
+
+        #augment
+        if self.augmentations:
+            # roll
+            if "roll" in self.augmentations:
+                shift = int(self.rng.random() * data.shape[2])
+                data = np.roll(data, shift, axis=-1)
+                label = np.roll(label, shift, axis=-1)
+
+            # flip vertically (mirror horizontally)
+            if "flip" in self.augmentations:
+                if self.rng.random() > 0.5:
+                    data = np.flip(data, axis=1).copy()
+                    label = np.flip(label, axis=1).copy()
         
         return data, label, filename

@@ -6,12 +6,13 @@ import numpy as np
 import torch
 from nvidia.dali.pipeline import Pipeline
 import nvidia.dali.ops as ops
+import nvidia.dali.types as types
 from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 
 class NumpyReadPipeline(Pipeline):
     def __init__(self, file_root, data_files, label_files, batch_size, mean, stddev, num_threads,
                  device, io_device, num_shards=1, shard_id=0, shuffle=False, stick_to_shard=False,
-                 is_validation=False, lazy_init = False, use_mmap=True, seed=333):
+                 is_validation=False, lazy_init = False, augmentations = [], use_mmap=True, seed=333):
         super(NumpyReadPipeline, self).__init__(batch_size, num_threads, device.index, seed)
         
         self.data = ops.NumpyReader(device = io_device,
@@ -47,6 +48,38 @@ class NumpyReadPipeline(Pipeline):
         self.normalize = ops.Normalize(device = "gpu", mean = mean, stddev = stddev, scale = 1.)
         self.transpose = ops.Transpose(device = "gpu", perm = [2, 0, 1])
 
+        self.augmentations = augmentations
+        if self.augmentations:
+            # casts
+            self.fcast = ops.Cast(dtype=types.DALIDataType.FLOAT32)
+            self.icast = ops.Cast(dtype=types.DALIDataType.INT32)
+            self.bcast = ops.Cast(dtype=types.DALIDataType.BOOL)
+
+            # random stuff
+            self.rng = ops.CoinFlip()
+
+            # shape stuff
+            self.reshape_in = ops.Reshape(device = "gpu", shape = [768, 1152, 1], layout="HWC")
+            self.reshape_out = ops.Reshape(device = "gpu", shape = [768, 1152], layout="HW")
+
+            # special ops
+            if "flip" in self.augmentations:
+                self.flip = ops.Flip(device = "gpu", depthwise = 0, horizontal = 0)
+
+            if "jitter" in self.augmentations:
+                self.jitter_data = ops.Jitter(device = "gpu",
+                                              nDegree = 4,
+                                              seed = seed)
+                self.jitter_label = ops.Jitter(device = "gpu",
+                                               nDegree = 4,
+                                               seed = seed)
+
+            if "gauss" in self.augmentations:
+                self.blur = ops.GaussianBlur(device = "gpu",
+                                             sigma = 1.,
+                                             window_size = 3)
+
+
     def define_graph(self):
         data = self.data(name = "data")
         label = self.label(name = "label")
@@ -55,9 +88,37 @@ class NumpyReadPipeline(Pipeline):
         data = data.gpu()
         label = label.gpu()
 
+        # augment if requested
+        if self.augmentations:
+
+            if "flip" in self.augmentations:
+                # enable or disable
+                condition = self.icast(self.rng())
+                
+                # flip
+                data = self.flip(data, vertical = condition)
+                label = self.reshape_out(self.flip(self.reshape_in(label), vertical = condition))
+
+            if "jitter" in self.augmentations:
+                # enable or disable
+                condition = self.icast(self.rng())
+
+                data = self.jitter_data(data, mask = condition)
+                label = self.reshape_out(self.jitter_label(self.reshape_in(label), mask = condition))
+
+            if "gauss" in self.augmentations:
+                condition = self.bcast(self.rng())
+                not_condition = condition ^ True
+
+                data_blurred = self.blur(data)
+                label_blurred = self.icast(self.blur(self.fcast(label)))
+                
+                data = data * not_condition + data_blurred * condition
+                label = self.icast(label * not_condition + label_blurred * condition)
+
         # transpose data to NCHW
         data = self.transpose(data)
-        
+
         # normalize now:
         data = self.normalize(data)
                 
@@ -128,6 +189,7 @@ class CamDaliDataloader(object):
                                           shuffle = self.shuffle,
                                           is_validation = self.is_validation,
                                           lazy_init = self.lazy_init,
+                                          augmentations = self.augmentations,
                                           use_mmap = self.use_mmap,
                                           seed = self.seed)
         
@@ -152,7 +214,8 @@ class CamDaliDataloader(object):
                  num_threads = 1, device = torch.device("cpu"),
                  num_shards = 1, shard_id = 0, stick_to_shard = False,
                  shuffle = False, is_validation = False,
-                 lazy_init = False, use_mmap = True, read_gpu = False, seed = 333):
+                 lazy_init = False,augmentations = [],
+                 use_mmap = True, read_gpu = False, seed = 333):
     
         # read filenames first
         self.batchsize = batchsize
@@ -165,6 +228,7 @@ class CamDaliDataloader(object):
         self.pipeline = None
         self.iterator = None
         self.lazy_init = lazy_init
+        self.augmentations = augmentations
         self.num_shards = num_shards
         self.shard_id = shard_id
         self.stick_to_shard = stick_to_shard

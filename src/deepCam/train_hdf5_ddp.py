@@ -291,6 +291,7 @@ def main(pargs):
                                    allow_uneven_distribution = False,
                                    shuffle = True, 
                                    preprocess = True,
+                                   augmentations = pargs.data_augmentations,
                                    comm_size = 1,
                                    comm_rank = 0)
 
@@ -326,6 +327,7 @@ def main(pargs):
                                                   shuffle = True,
                                                   is_validation = False,
                                                   lazy_init = True,
+                                                  augmentations = pargs.data_augmentations,
                                                   read_gpu = False,
                                                   use_mmap = False,
                                                   seed = seed)
@@ -340,6 +342,7 @@ def main(pargs):
                                         allow_uneven_distribution = True,
                                         shuffle = (pargs.max_validation_steps is not None),
                                         preprocess = True,
+                                        augmentations = [],
                                         comm_size = comm_size,
                                         comm_rank = comm_rank)
     
@@ -369,10 +372,33 @@ def main(pargs):
                                                        shuffle = True,
                                                        is_validation = True,
                                                        lazy_init = True,
+                                                       augmentations = [],
                                                        read_gpu = False,
                                                        use_mmap = False,
                                                        seed = seed)
         validation_size = validation_loader.global_size
+
+    # jit stuff
+    if pargs.enable_jit:
+        # input_shape:
+        input_shape = [train_loader.shapes[0][2], train_loader.shapes[0][0], train_loader.shapes[0][1]]
+        # example input
+        train_example = torch.randn( (pargs.local_batch_size, *input_shape) ).to(device)
+        validation_example = torch.randn( (1, *input_shape) ).to(device)
+        
+        # NHWC if requested
+        if pargs.enable_nhwc:
+            train_example = train_example.contiguous(memory_format = torch.channels_last)
+            validation_example = validation_example.contiguous(memory_format = torch.channels_last)
+
+        #if pargs.enable_amp:
+        #    train_example = train_example.half()
+        #    validation_example = validation_example.half()
+
+        with amp.autocast(enabled = pargs.enable_amp):
+            net_train = torch.jit.trace(net.module, train_example, check_trace = False)
+    else:
+        net_train = net
         
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
@@ -429,17 +455,24 @@ def main(pargs):
             # to NHWC
             if pargs.enable_nhwc:
                 inputs = inputs.contiguous(memory_format = torch.channels_last)
-            
-            # forward pass
-            with amp.autocast(enabled = pargs.enable_amp):
-                outputs = net.forward(inputs)
 
-                # to NCHW
-                if pargs.enable_nhwc:
-                    outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-            
-                # Compute loss and average across nodes
-                loss = criterion(outputs, label)
+            # forward pass
+            if pargs.enable_jit:
+                # JIT
+                outputs = net_train.forward(inputs)
+                with amp.autocast(enabled = pargs.enable_amp):
+                    # to NCHW
+                    if pargs.enable_nhwc:
+                        outputs = outputs.contiguous(memory_format = torch.contiguous_format)
+                    loss = criterion(outputs, label)
+            else:
+                # NO-JIT
+                with amp.autocast(enabled = pargs.enable_amp):
+                    outputs = net_train.forward(inputs)
+                    # to NCHW
+                    if pargs.enable_nhwc:
+                        outputs = outputs.contiguous(memory_format = torch.contiguous_format)
+                    loss = criterion(outputs, label)
             
             # Backprop
             #optimizer.zero_grad(set_to_none = True)
@@ -672,8 +705,10 @@ if __name__ == "__main__":
     AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--enable_amp", action='store_true')
+    AP.add_argument("--enable_jit", action='store_true')
     AP.add_argument("--enable_dali", action='store_true')
     AP.add_argument("--enable_nhwc", action='store_true')
+    AP.add_argument("--data_augmentations", type=str, nargs='+', default=[], help="Data augmentations used. Supported are [roll, flip]")
     AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     AP.add_argument("--seed", default=333, type=int)
