@@ -165,7 +165,10 @@ def main(pargs):
         
             #init db and get config
             resume_flag = pargs.run_tag if pargs.resume_logging else False
-            wandb.init(entity = wblogin, project = 'deepcam', name = pargs.run_tag, id = pargs.run_tag, resume = resume_flag)
+            wandb.init(entity = wblogin, project = 'deepcam', 
+                       dir = output_dir,
+                       name = pargs.run_tag, id = pargs.run_tag, 
+                       resume = resume_flag)
             config = wandb.config
         
             #set general parameters
@@ -460,11 +463,11 @@ def main(pargs):
             if pargs.enable_jit:
                 # JIT
                 outputs = net_train.forward(inputs)
-                with amp.autocast(enabled = pargs.enable_amp):
+                with amp.autocast(enabled = (pargs.enable_amp and False)):
                     # to NCHW
                     if pargs.enable_nhwc:
                         outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-                    loss = criterion(outputs, label)
+                    loss = criterion(outputs.to(torch.float32), label)
             else:
                 # NO-JIT
                 with amp.autocast(enabled = pargs.enable_amp):
