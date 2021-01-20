@@ -538,7 +538,6 @@ def main(pargs):
                     wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
                     wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
                     wandb.log({"learning_rate": current_lr}, step = step)
-
             
             # validation step if desired
             if (step % pargs.validation_frequency == 0):

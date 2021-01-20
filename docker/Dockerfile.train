@@ -19,13 +19,18 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-FROM nvcr.io/nvidia/pytorch:20.11-py3
+FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.12-py3-devel
+#FROM nvcr.io/nvidia/pytorch:20.12-py3
 
 # upgrade dali
-COPY no-git/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl /tmp/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
-RUN cd /tmp && pip uninstall -y nvidia-dali-cuda110 && \
-    pip install nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl && \
-    rm nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
+#COPY no-git/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl /tmp/nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
+#RUN cd /tmp && pip uninstall -y nvidia-dali-cuda110 && \
+#    pip install nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl && \
+#    rm nvidia_dali_cuda110-0.30.0.dev0-12345-py3-none-manylinux2014_x86_64.whl
+
+# reinstall DALI
+RUN pip uninstall -y nvidia-dali-cuda110 && \
+    pip install --extra-index-url https://developer.download.nvidia.com/compute/redist/nightly nvidia-dali-nightly-cuda110
 
 #Install conda prereqs
 RUN conda config --add channels conda-forge \
