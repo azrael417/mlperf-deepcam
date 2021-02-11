@@ -49,6 +49,9 @@ RUN pip install "git+https://github.com/mlperf/logging.git"
 #install gradual warmup
 RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
+#install torchsummary
+RUN pip install torchsummary
+
 #copy additional stuff
 COPY src/deepCam /opt/deepCam
 COPY src/utils /opt/utils

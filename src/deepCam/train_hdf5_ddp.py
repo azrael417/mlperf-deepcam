@@ -47,6 +47,9 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import DistributedSampler
 
+# utils
+from torchsummary import summary
+
 # Custom
 from utils import utils
 from utils import losses
@@ -276,10 +279,6 @@ def main(pargs):
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
     dist.broadcast(steptens, src = 0)
-    
-    ##broadcast model and optimizer state
-    #hvd.broadcast_parameters(net.state_dict(), root_rank = 0)
-    #hvd.broadcast_optimizer_state(optimizer, root_rank = 0)
 
     #unpack the bcasted tensor
     start_step = int(steptens.cpu().numpy()[0])
@@ -380,6 +379,12 @@ def main(pargs):
                                                        use_mmap = False,
                                                        seed = seed)
         validation_size = validation_loader.global_size
+
+    ## print model summary :
+    #if comm_rank == 0:
+    #    tmp_shape = train_loader.shapes[0]
+    #    input_shape = (tmp_shape[2], tmp_shape[0], tmp_shape[1])
+    #    summary(net.module, input_size = input_shape)
 
     # jit stuff
     if pargs.enable_jit:

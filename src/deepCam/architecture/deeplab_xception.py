@@ -393,6 +393,87 @@ class DeconvUpsampler(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+
+                
+class TrainableAffine(nn.Module):
+    def __init__(self, num_features):
+        super(TrainableAffine, self).__init__()
+        self.num_features = num_features
+
+        # weights for affine trans
+        self.weights = nn.Parameter(torch.ones((num_features, 1, 1), requires_grad=True))
+        self.bias =nn.Parameter(torch.zeros((num_features, 1, 1), requires_grad=True))
+
+    def forward(self, x):
+        return self.weights * x + self.bias
+
+                                          
+class MultiplexedBatchNorm2d(nn.Module):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, affine=True):
+        super(MultiplexedBatchNorm2d, self).__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+        self.is_training = True
+
+        if self.affine:
+            self.affine_trans = TrainableAffine(self.num_features)
+
+        self.num_samples = 0
+        self.running_mean = torch.zeros(num_features, 1, 1)
+        self.running_var = torch.ones(num_features, 1, 1)
+
+    def forward(self, x):
+        self.num_samples += x.shape[0]
+
+        # put on device
+        self.running_mean = self.running_mean.to(x.device)
+        self.running_var = self.running_var.to(x.device)
+
+        # update mean and variance
+        if self.is_training:
+            xred = torch.sum(x, dim=0, keepdim=True)
+            mean = self.running_mean + (xred - self.running_mean) / self.num_samples
+            var = self.running_var + (xred - self.running_mean) * (xred - mean) / self.num_samples
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        # normalize:
+        x = (x - mean) / torch.sqrt(var + self.eps)
+
+        # update running stats
+        if self.is_training:
+            self.running_mean = (1.-self.momentum) * mean.detach() + self.momentum * self.running_mean
+            self.running_var = (1.-self.momentum) * var.detach() + self.momentum * self.running_var
+
+        # affine
+        if self.affine:
+            x = self.affine_trans(x)
+
+        return x
+                                          
+
+class GlobalAveragePool(nn.Module):
+    def __init__(self, in_channels, out_channels, normalizer=nn.BatchNorm2d):
+        super(GlobalAveragePool, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        if normalizer is not None:
+            self.global_average_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                                     nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=False),
+                                                     normalizer(out_channels),
+                                                     nn.ReLU())
+        else:
+            self.global_average_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                                     nn.Conv2d(in_channels, out_channels, 1, stride=1, bias=True),
+                                                     nn.ReLU())
+
+    def forward(self, x):
+        return self.global_average_pool(x)
+        
                 
                 
 class DeepLabv3_plus(nn.Module):
@@ -422,10 +503,14 @@ class DeepLabv3_plus(nn.Module):
 
         self.relu = nn.ReLU()
 
-        self.global_avg_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
-                                             nn.Conv2d(2048, 256, 1, stride=1, bias=False),
-                                             normalizer(256),
-                                             nn.ReLU())
+        # removed batch normalization in this layer
+        #self.global_avg_pool = GlobalAveragePool(2048, 256, None)
+        #self.global_avg_pool = GlobalAveragePool(2048, 256, normalizer)
+        self.global_avg_pool = GlobalAveragePool(2048, 256, TrainableAffine)
+        #self.global_avg_pool = GlobalAveragePool(2048, 256, MultiplexedBatchNorm2d)
+        #self.global_avg_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+        #                                     nn.Conv2d(2048, 256, 1, stride=1, bias=True),
+        #                                     nn.ReLU())
 
         self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
         self.bn1 = normalizer(256)
