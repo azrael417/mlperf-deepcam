@@ -23,7 +23,6 @@
 # Basics
 import os
 import numpy as np
-import argparse as ap
 import datetime as dt
 import subprocess as sp
 
@@ -51,6 +50,8 @@ from torch.utils.data import DistributedSampler
 from torchsummary import summary
 
 # Custom
+from driver import train_step, validate
+from utils import parser
 from utils import utils
 from utils import losses
 from utils import parsing_helpers as ph
@@ -87,17 +88,6 @@ import torch.cuda.amp as amp
 
 #comm wrapper
 from utils import comm
-
-
-#dict helper for argparse
-class StoreDictKeyPair(ap.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        my_dict = {}
-        for kv in values.split(","):
-            k,v = kv.split("=")
-            my_dict[k] = v
-        setattr(namespace, self.dest, my_dict)
-
 
 #main function
 def main(pargs):
@@ -224,6 +214,8 @@ def main(pargs):
     fpw_1 = 2.61461122397522257612
     fpw_2 = 1.71641974795896018744
     criterion = losses.FPLoss(class_weights, fpw_1, fpw_2).to(device)
+    if pargs.enable_jit:
+        criterion = torch.jit.script(criterion)
 
     #select optimizer
     optimizer = None
@@ -424,8 +416,9 @@ def main(pargs):
         logger.log_event(key = "invalid_submission")
     
     #for visualization
+    viz = None
     if (visualize_train or visualize_validation):
-        viz = vizc.CamVisualizer()   
+        viz = vizc.CamVisualizer(plot_dir)   
     
     # Train network
     if have_wandb and (comm_rank == 0):
@@ -456,221 +449,40 @@ def main(pargs):
             distributed_train_sampler.set_epoch(epoch)
 
         # epoch loop
-        for inputs, label, filename in train_loader:
-
-            if not pargs.enable_dali:
-                # send to device
-                inputs = inputs.to(device)
-                label = label.to(device)
-
-            # to NHWC
-            if pargs.enable_nhwc:
-                inputs = inputs.contiguous(memory_format = torch.channels_last)
-
-            # forward pass
-            if pargs.enable_jit:
-                # JIT
-                outputs = net_train.forward(inputs)
-                with amp.autocast(enabled = pargs.enable_amp):
-                    # to NCHW
-                    if pargs.enable_nhwc:
-                        outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-                    loss = criterion(outputs, label)
-            else:
-                # NO-JIT
-                with amp.autocast(enabled = pargs.enable_amp):
-                    outputs = net_train.forward(inputs)
-                    # to NCHW
-                    if pargs.enable_nhwc:
-                        outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-                    loss = criterion(outputs, label)
+        with torch.autograd.profiler.emit_nvtx(enabled = True):
+            for inputs, label, filename in train_loader:
+                
+                step = train_step(pargs, comm_rank, comm_size, 
+                                  step, epoch, 
+                                  net_train, criterion, 
+                                  optimizer, gscaler, scheduler,
+                                  inputs, label, filename, 
+                                  logger, have_wandb, viz)
             
-            # Backprop
-            #optimizer.zero_grad(set_to_none = True)
-            optimizer.zero_grad()
-            gscaler.scale(loss).backward()
-            gscaler.step(optimizer)
-            gscaler.update()
-
-            # step counter
-            step += 1
+                # validation step if desired
+                if (step % pargs.validation_frequency == 0):
+                    
+                    stop_training = validate(pargs, comm_size, comm_rank, 
+                                             step, epoch, 
+                                             net, criterion, validation_loader, 
+                                             logger, have_wandb, viz)
             
-            if pargs.lr_schedule:
-                current_lr = scheduler.get_last_lr()[0]
-                scheduler.step()
+                #save model if desired
+                if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
+                    logger.log_start(key = "save_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+                    if comm_rank == 0:
+                        checkpoint = {
+                            'step': step,
+                            'epoch': epoch,
+                            'model': net.state_dict(),
+                            'optimizer': optimizer.state_dict()
+		                }
+                        torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
+                    logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
 
-            #visualize if requested
-            if visualize_train and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
-                # Compute predictions
-                predictions = torch.max(outputs, 1)[1]
-                
-                # extract sample id and data tensors
-                sample_idx = np.random.randint(low=0, high=label.shape[0])
-                plot_input = inputs.detach()[sample_idx, 0,...].cpu().numpy()
-                plot_prediction = predictions.detach()[sample_idx,...].cpu().numpy()
-                plot_label = label.detach()[sample_idx,...].cpu().numpy()
-                
-                # create filenames
-                outputfile = os.path.basename(filename[sample_idx]).replace("data-", "training-").replace(".h5", ".png")
-                outputfile = os.path.join(plot_dir, outputfile)
-                
-                # plot
-                viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
-                
-                #log if requested
-                if have_wandb:
-                    img = Image.open(outputfile)
-                    wandb.log({"train_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
-            
-            
-            #log if requested
-            if (step % pargs.logging_frequency == 0):
-
-                # allreduce for loss
-                loss_avg = loss.detach()
-                dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
-                loss_avg_train = loss_avg.item() / float(comm_size)
-
-                # Compute score
-                predictions = torch.max(outputs, 1)[1]
-                iou = utils.compute_score(predictions, label, device_id=device, num_classes=3)
-                iou_avg = iou.detach()
-                dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
-                iou_avg_train = iou_avg.item() / float(comm_size)
-                
-                logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                
-                if have_wandb and (comm_rank == 0):
-                    wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
-                    wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
-                    wandb.log({"learning_rate": current_lr}, step = step)
-            
-            # validation step if desired
-            if (step % pargs.validation_frequency == 0):
-                
-                logger.log_start(key = "eval_start", metadata = {'epoch_num': epoch+1})
-
-                #eval
-                net.eval()
-                
-                count_sum_val = torch.Tensor([0.]).to(device)
-                loss_sum_val = torch.Tensor([0.]).to(device)
-                iou_sum_val = torch.Tensor([0.]).to(device)
-                
-                # disable gradients
-                with torch.no_grad():
-                
-                    # iterate over validation sample
-                    step_val = 0
-                    # only print once per eval at most
-                    visualized = False
-                    for inputs_val, label_val, filename_val in validation_loader:
-
-                        if not pargs.enable_dali:
-                            #send to device
-                            inputs_val = inputs_val.to(device)
-                            label_val = label_val.to(device)
-                        else:
-                            if inputs_val.numel() == 0:
-                                # we are done
-                                continue
-
-                        # to NHWC
-                        if pargs.enable_nhwc:
-                            inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
-                            
-                        # forward pass
-                        #with amp.autocast(enabled = pargs.enable_amp):
-                        outputs_val = net.forward(inputs_val)
-
-                        # NCHW
-                        if pargs.enable_nhwc:
-                            outputs_val = outputs_val.contiguous(memory_format = torch.contiguous_format)
-                        
-                        # Compute loss
-                        loss_val = criterion(outputs_val, label_val)
-
-                        # accumulate loss
-                        loss_sum_val += loss_val
-                        
-                        #increase counter
-                        count_sum_val += 1.
-                        
-                        # Compute score
-                        predictions_val = torch.max(outputs_val, 1)[1]
-                        iou_val = utils.compute_score(predictions_val, label_val, device_id=device, num_classes=3)
-                        iou_sum_val += iou_val
-
-                        # Visualize
-                        if visualize_validation and (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
-                            #extract sample id and data tensors
-                            sample_idx = np.random.randint(low=0, high=label_val.shape[0])
-                            plot_input = inputs_val.detach()[sample_idx, 0,...].cpu().numpy()
-                            plot_prediction = predictions_val.detach()[sample_idx,...].cpu().numpy()
-                            plot_label = label_val.detach()[sample_idx,...].cpu().numpy()
-                            
-                            #create filenames
-                            outputfile = os.path.basename(filename[sample_idx]).replace("data-", "validation-").replace(".h5", ".png")
-                            outputfile = os.path.join(plot_dir, outputfile)
-                            
-                            #plot
-                            viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
-                            visualized = True
-                            
-                            #log if requested
-                            if have_wandb:
-                                img = Image.open(outputfile)
-                                wandb.log({"eval_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
-                        
-                        #increase eval step counter
-                        step_val += 1
-                        
-                        if (pargs.max_validation_steps is not None) and step_val > pargs.max_validation_steps:
-                            break
-                        
-                # average the validation loss
-                dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM, async_op=False)
-                dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
-                dist.all_reduce(iou_sum_val, op=dist.ReduceOp.SUM, async_op=False)
-                loss_avg_val = loss_sum_val.item() / count_sum_val.item()
-                iou_avg_val = iou_sum_val.item() / count_sum_val.item()
-                
-                # print results
-                logger.log_event(key = "eval_accuracy", value = iou_avg_val, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                logger.log_event(key = "eval_loss", value = loss_avg_val, metadata = {'epoch_num': epoch+1, 'step_num': step})
-
-                # log in wandb
-                if have_wandb and (comm_rank == 0):
-                    wandb.log({"eval_loss": loss_avg_val}, step=step)
-                    wandb.log({"eval_accuracy": iou_avg_val}, step=step)
-
-                if (iou_avg_val >= pargs.target_iou):
-                    logger.log_event(key = "target_accuracy_reached", value = pargs.target_iou, metadata = {'epoch_num': epoch+1, 'step_num': step})
-                    stop_training = True
-
-                # set to train
-                net.train()
-
-                logger.log_end(key = "eval_stop", metadata = {'epoch_num': epoch+1})
-            
-            #save model if desired
-            if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
-                logger.log_start(key = "save_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
-                if comm_rank == 0:
-                    checkpoint = {
-                        'step': step,
-                        'epoch': epoch,
-                        'model': net.state_dict(),
-                        'optimizer': optimizer.state_dict()
-		    }
-                    torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
-                logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
-
-            # Stop training?
-            if stop_training:
-                break
+                # Stop training?
+                if stop_training:
+                    break
             
         # log the epoch
         logger.log_end(key = "epoch_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
@@ -687,42 +499,7 @@ def main(pargs):
 if __name__ == "__main__":
 
     #arguments
-    AP = ap.ArgumentParser()
-    AP.add_argument("--wireup_method", type=str, default="nccl-openmpi", choices=["nccl-openmpi", "nccl-slurm", "nccl-slurm-pmi", "mpi"], help="Specify what is used for wiring up the ranks")
-    AP.add_argument("--wandb_certdir", type=str, default="/opt/certs", help="Directory in which to find the certificate for wandb logging.")
-    AP.add_argument("--run_tag", type=str, help="Unique run tag, to allow for better identification")
-    AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")
-    AP.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to restart training from.")
-    AP.add_argument("--data_dir_prefix", type=str, default='/', help="prefix to data dir")
-    AP.add_argument("--max_inter_threads", type=int, default=1, help="Maximum number of concurrent readers")
-    AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
-    AP.add_argument("--save_frequency", type=int, default=100, help="Frequency with which the model is saved in number of steps")
-    AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
-    AP.add_argument("--max_validation_steps", type=int, default=None, help="Number of validation steps to perform. Helps when validation takes a long time. WARNING: setting this argument invalidates submission. It should only be used for exploration, the final submission needs to have it disabled.")
-    AP.add_argument("--logging_frequency", type=int, default=100, help="Frequency with which the training progress is logged. If not positive, logging will be disabled")
-    AP.add_argument("--training_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during training")
-    AP.add_argument("--validation_visualization_frequency", type=int, default = 50, help="Frequency with which a random sample is visualized during validation")
-    AP.add_argument("--local_batch_size", type=int, default=1, help="Number of samples per local minibatch")
-    AP.add_argument("--channels", type=int, nargs='+', default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], help="Channels used in input")
-    AP.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "AdamW", "LAMB"], help="Optimizer to use (LAMB requires APEX support).")
-    AP.add_argument("--start_lr", type=float, default=1e-3, help="Start LR")
-    AP.add_argument("--adam_eps", type=float, default=1e-8, help="Adam Epsilon")
-    AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
-    AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
-    AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")
-    AP.add_argument("--lr_warmup_factor", type=float, default=1., help="Multiplier for linear LR warmup")
-    AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
-    AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
-    AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
-    AP.add_argument("--enable_amp", action='store_true')
-    AP.add_argument("--enable_jit", action='store_true')
-    AP.add_argument("--enable_dali", action='store_true')
-    AP.add_argument("--enable_nhwc", action='store_true')
-    AP.add_argument("--data_augmentations", type=str, nargs='+', default=[], help="Data augmentations used. Supported are [roll, flip]")
-    AP.add_argument("--enable_wandb", action='store_true')
-    AP.add_argument("--resume_logging", action='store_true')
-    AP.add_argument("--seed", default=333, type=int)
-    pargs = AP.parse_args()
+    pargs = parser.parse_arguments()
     
     #run the stuff
     main(pargs)

@@ -40,7 +40,7 @@ from mpl_toolkits.basemap import Basemap
 
 class CamVisualizer(object):
     
-    def __init__(self):
+    def __init__(self, plot_dir=None):
         
         # Create figre        
         self.lats = np.linspace(-90,90,768)
@@ -63,6 +63,9 @@ class CamVisualizer(object):
 
         colors = list(map(lambda c: (c[0]/256,c[1]/256,c[2]/256,c[3]), colors))
         self.my_cmap = mpl.colors.LinearSegmentedColormap.from_list('mycmap', colors, N=64)
+        
+        # set plot dir
+        self.plot_dir = plot_dir
         
     
     def plot(self, input_filename, output_filename, data, prediction, label):
@@ -124,6 +127,8 @@ class CamVisualizer(object):
                 ax.set_title("Extreme Weather Patterns {:04d}-{:02d}-{:02d} (stream {:02d})".format(int(year), int(month), int(day), int(stream)), fontdict={'fontsize': 36})
 
         # save figure
+        if self.plot_dir is not None:
+            output_filename = os.path.join(self.plot_dir, output_filename)
         plt.gcf().savefig(output_filename, format="PNG", bbox_inches='tight')
         plt.clf()
         plt.close(fig)
