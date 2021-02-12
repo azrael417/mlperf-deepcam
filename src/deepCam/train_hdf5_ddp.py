@@ -399,12 +399,11 @@ def main(pargs):
             train_example = train_example.contiguous(memory_format = torch.channels_last)
             validation_example = validation_example.contiguous(memory_format = torch.channels_last)
 
-        #if pargs.enable_amp:
-        #    train_example = train_example.half()
-        #    validation_example = validation_example.half()
-
-        with amp.autocast(enabled = pargs.enable_amp):
-            net_train = torch.jit.trace(net.module, train_example, check_trace = False)
+        if pargs.enable_amp:
+            with amp.autocast(enabled = pargs.enable_amp):
+                net_train = torch.jit.trace(net.module, train_example, check_trace = False)
+        else:
+            net_train = torch.jit.script(net.module)
     else:
         net_train = net
         
@@ -468,11 +467,11 @@ def main(pargs):
             if pargs.enable_jit:
                 # JIT
                 outputs = net_train.forward(inputs)
-                with amp.autocast(enabled = (pargs.enable_amp and False)):
+                with amp.autocast(enabled = pargs.enable_amp):
                     # to NCHW
                     if pargs.enable_nhwc:
                         outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-                    loss = criterion(outputs.to(torch.float32), label)
+                    loss = criterion(outputs, label)
             else:
                 # NO-JIT
                 with amp.autocast(enabled = pargs.enable_amp):
