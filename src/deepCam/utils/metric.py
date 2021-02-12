@@ -28,13 +28,15 @@ def compute_score(prediction, gt, num_classes, type="iou", weights=None):
     fp = [0] * num_classes
     fn = [0] * num_classes
     iou = [0.] * num_classes
-
+    
     #cast type for GT tensor. not needed for new
     #pytorch but much cleaner
     gt = gt.type(torch.long)
     
+    # define equal and not equal masks
     equal = (prediction == gt)
     not_equal = (prediction != gt)
+    
     for j in range(0, num_classes):
         #true positve: prediction and gt agree and gt is of class j
         tp[j] += torch.sum(equal[gt == j])
@@ -42,7 +44,7 @@ def compute_score(prediction, gt, num_classes, type="iou", weights=None):
         fp[j] += torch.sum(not_equal[prediction == j])
         #false negative: prediction is not of class j and gt is of class j
         fn[j] += torch.sum(not_equal[gt == j])
-
+    
     for j in range(0, num_classes):
         union = tp[j] + fp[j] + fn[j]
         if union.item() == 0:
@@ -51,3 +53,34 @@ def compute_score(prediction, gt, num_classes, type="iou", weights=None):
             iou[j] = tp[j].float() / union.float()
     
     return sum(iou)/float(num_classes)
+
+
+@torch.jit.script
+def compute_score_new(prediction, gt, num_classes, type="iou", weights=None):
+    #flatten input
+    tpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
+    fpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
+    fnt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
+    iout = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
+
+    #cast type for GT tensor. not needed for new
+    #pytorch but much cleaner
+    gt = gt.type(torch.long)
+    
+    # define equal and not equal masks
+    equal = (prediction == gt)
+    not_equal = (prediction != gt)
+    
+    for j in range(0, num_classes):
+        #true positve: prediction and gt agree and gt is of class j
+        tpt[j] += torch.sum(equal[gt == j])
+        #false positive: prediction is of class j and gt not of class j
+        fpt[j] += torch.sum(not_equal[prediction == j])
+        #false negative: prediction is not of class j and gt is of class j
+        fnt[j] += torch.sum(not_equal[gt == j])
+
+    # compute IoU
+    uniont = float(num_classes) * (tpt + fpt + fnt)
+    iout = torch.sum(tpt.float() / uniont.float())
+    
+    return iout

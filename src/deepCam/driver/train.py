@@ -28,7 +28,7 @@ import torch.cuda.amp as amp
 import torch.distributed as dist
 
 # custom stuff
-from utils import utils
+from utils import metric
 
 def train_step(pargs, comm_rank, comm_size, 
                step, epoch, 
@@ -110,7 +110,7 @@ def train_step(pargs, comm_rank, comm_size,
     
         # Compute score
         predictions = torch.max(outputs, 1)[1]
-        iou = utils.compute_score(predictions, label, num_classes=3)
+        iou = metric.compute_score_new(predictions, label, num_classes=3)
         iou_avg = iou.detach()
         dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
         iou_avg_train = iou_avg.item() / float(comm_size)
