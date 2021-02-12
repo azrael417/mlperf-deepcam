@@ -27,6 +27,9 @@ import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 import torch.cuda.amp as amp
 
+# typing used for torch script
+from typing import List
+
 
 class SeparableConv2d(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=3, stride=1, padding=0, dilation=1, bias=False):
@@ -41,26 +44,29 @@ class SeparableConv2d(nn.Module):
         x = self.pointwise(x)
         return x
 
-
-def fixed_padding(inputs, kernel_size, rate):
+    
+def compute_padding(kernel_size, rate):
     kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
     pad_total = kernel_size_effective - 1
     pad_beg = pad_total // 2
     pad_end = pad_total - pad_beg
-    padded_inputs = F.pad(inputs, (pad_beg, pad_end, pad_beg, pad_end))
-    return padded_inputs
+    return pad_beg, pad_end
 
 
 class SeparableConv2d_same(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=3, stride=1, dilation=1, bias=False):
         super(SeparableConv2d_same, self).__init__()
 
+        # compute padding here
+        pad_beg, pad_end = compute_padding(kernel_size, rate=dilation)
+        self.padding = (pad_beg, pad_end, pad_beg, pad_end)
+        
         self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size, stride, 0, dilation,
                                groups=inplanes, bias=bias)
         self.pointwise = nn.Conv2d(inplanes, planes, 1, 1, 0, 1, 1, bias=bias)
 
     def forward(self, x):
-        x = fixed_padding(x, self.conv1.kernel_size[0], rate=self.conv1.dilation[0])
+        x = F.pad(x, self.padding)
         x = self.conv1(x)
         x = self.pointwise(x)
         return x
@@ -325,7 +331,7 @@ class InterpolationUpsampler(nn.Module):
                                        nn.ReLU(),
                                        nn.Conv2d(256, n_output, kernel_size=1, stride=1))
 
-    def forward(self, x, low_level_features, input_size):
+    def forward(self, x, low_level_features, input_size: List[int]):
         x = F.interpolate(x, size=(int(math.ceil(input_size[-2]/4)),
                                    int(math.ceil(input_size[-1]/4))), mode='bilinear', align_corners=True)
         x = torch.cat((x, low_level_features), dim=1)
@@ -373,7 +379,7 @@ class DeconvUpsampler(nn.Module):
 	    #no bias or BN on the last deconv
         self.last_deconv = nn.Sequential(nn.ConvTranspose2d(256, n_output, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False))
 
-    def forward(self, x, low_level_features, input_size):
+    def forward(self, x, low_level_features, input_size: List[int]):
         x = self.deconv1(x)
         x = self.deconv2(x)
         x = torch.cat((x, low_level_features), dim=1)
