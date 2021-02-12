@@ -389,7 +389,11 @@ def main(pargs):
     # jit stuff
     if pargs.enable_jit:
         # input_shape:
-        input_shape = [train_loader.shapes[0][2], train_loader.shapes[0][0], train_loader.shapes[0][1]]
+        if pargs.enable_dali:
+            tshapes = train_loader.shapes[0]
+        else:
+            tshapes = train_loader.dataset.shapes[0]
+        input_shape = [tshapes[2], tshapes[0], tshapes[1]]
         # example input
         train_example = torch.randn( (pargs.local_batch_size, *input_shape) ).to(device)
         validation_example = torch.randn( (1, *input_shape) ).to(device)

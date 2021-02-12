@@ -411,8 +411,7 @@ class TrainableAffine(nn.Module):
         self.bias =nn.Parameter(torch.zeros((num_features, 1, 1), requires_grad=True))
 
     def forward(self, x):
-        with amp.autocast(enabled = False):
-            return self.weights * x + self.bias
+        return self.weights * x + self.bias
 
                                           
 class MultiplexedBatchNorm2d(nn.Module):
