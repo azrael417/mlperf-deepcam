@@ -29,6 +29,13 @@ import torch.distributed as dist
 # custom stuff
 from utils import metric
 
+# import wandb
+try:
+    import wandb
+except ImportError:
+    pass
+
+
 def validate(pargs, comm_rank, comm_size,
              step, epoch, 
              net, criterion, validation_loader, 
@@ -87,7 +94,7 @@ def validate(pargs, comm_rank, comm_size,
         
             # Compute score
             predictions_val = torch.max(outputs_val, 1)[1]
-            iou_val = metric.compute_score_new(predictions_val, label_val, num_classes=3)
+            iou_val = metric.compute_score(predictions_val, label_val, num_classes=3)
             iou_sum_val += iou_val
 
             # Visualize

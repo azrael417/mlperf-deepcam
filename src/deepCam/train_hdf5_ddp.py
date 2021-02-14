@@ -52,7 +52,6 @@ from torchsummary import summary
 # Custom
 from driver import train_step, validate
 from utils import parser
-from utils import utils
 from utils import losses
 from utils import parsing_helpers as ph
 from data import cam_hdf5_dataset as cam
@@ -462,7 +461,7 @@ def main(pargs):
                 # validation step if desired
                 if (step % pargs.validation_frequency == 0):
                     
-                    stop_training = validate(pargs, comm_size, comm_rank, 
+                    stop_training = validate(pargs, comm_rank, comm_size,
                                              step, epoch, 
                                              net, criterion, validation_loader, 
                                              logger, have_wandb, viz)

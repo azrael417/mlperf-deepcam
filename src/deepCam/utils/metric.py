@@ -20,9 +20,10 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.   
 
 import torch
+from torch import Tensor
 
 
-def compute_score(prediction, gt, num_classes, type="iou", weights=None):
+def compute_score(prediction, gt, num_classes):
     #flatten input
     tp = [0] * num_classes
     fp = [0] * num_classes
@@ -56,7 +57,7 @@ def compute_score(prediction, gt, num_classes, type="iou", weights=None):
 
 
 @torch.jit.script
-def compute_score_new(prediction, gt, num_classes, type="iou", weights=None):
+def compute_score_new(prediction: Tensor, gt: Tensor, num_classes: int) -> Tensor:
     #flatten input
     tpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
     fpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
@@ -65,7 +66,7 @@ def compute_score_new(prediction, gt, num_classes, type="iou", weights=None):
 
     #cast type for GT tensor. not needed for new
     #pytorch but much cleaner
-    gt = gt.type(torch.long)
+    gt = gt.to(torch.long)
     
     # define equal and not equal masks
     equal = (prediction == gt)
@@ -81,6 +82,6 @@ def compute_score_new(prediction, gt, num_classes, type="iou", weights=None):
 
     # compute IoU
     uniont = float(num_classes) * (tpt + fpt + fnt)
-    iout = torch.sum(tpt.float() / uniont.float())
+    iout = torch.sum(torch.nan_to_num(tpt.float() / uniont.float(), nan=1.))
     
     return iout
