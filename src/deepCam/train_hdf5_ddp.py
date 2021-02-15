@@ -234,7 +234,7 @@ def main(pargs):
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
     #make model distributed
-    net = DDP(net, device_ids=[device.index], output_device=[device.index])
+    ddp_net = DDP(net, device_ids=[device.index], output_device=[device.index])
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
@@ -244,7 +244,7 @@ def main(pargs):
         start_step = checkpoint['step']
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer'])
-        net.load_state_dict(checkpoint['model'])
+        ddp_net.load_state_dict(checkpoint['model'])
     else:
         start_step = 0
         start_epoch = 0
@@ -388,6 +388,9 @@ def main(pargs):
         # example input
         train_example = torch.randn( (pargs.local_batch_size, *input_shape) ).to(device)
         validation_example = torch.randn( (1, *input_shape) ).to(device)
+
+        # backup old network
+        net_validate = net
         
         # NHWC if requested
         if pargs.enable_nhwc:
@@ -396,11 +399,14 @@ def main(pargs):
 
         if pargs.enable_amp:
             with amp.autocast(enabled = pargs.enable_amp):
-                net_train = torch.jit.trace(net.module, train_example, check_trace = False)
+                ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
         else:
-            net_train = torch.jit.script(net.module)
+            ddp_net.module = torch.jit.script(ddp_net.module)
+        net_train = ddp_net
+            
     else:
-        net_train = net
+        net_validate = ddp_net
+        net_train = ddp_net
         
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
@@ -420,14 +426,14 @@ def main(pargs):
         viz = vizc.CamVisualizer(plot_dir)   
     
     # Train network
-    if have_wandb and (comm_rank == 0):
-        wandb.watch(net)
+    if have_wandb and not pargs.enable_jit and (comm_rank == 0):
+        wandb.watch(net_train)
     
     step = start_step
     epoch = start_epoch
     current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
     stop_training = False
-    net.train()
+    net_train.train()
 
     # start trining
     logger.log_end(key = "init_stop", sync = True)
@@ -451,8 +457,8 @@ def main(pargs):
         with torch.autograd.profiler.emit_nvtx(enabled = True):
             for inputs, label, filename in train_loader:
                 
-                step = train_step(pargs, comm_rank, comm_size, 
-                                  step, epoch, 
+                step = train_step(pargs, comm_rank, comm_size,
+                                  device, step, epoch, 
                                   net_train, criterion, 
                                   optimizer, gscaler, scheduler,
                                   inputs, label, filename, 
@@ -462,8 +468,8 @@ def main(pargs):
                 if (step % pargs.validation_frequency == 0):
                     
                     stop_training = validate(pargs, comm_rank, comm_size,
-                                             step, epoch, 
-                                             net, criterion, validation_loader, 
+                                             device, step, epoch, 
+                                             net_validate, criterion, validation_loader, 
                                              logger, have_wandb, viz)
             
                 #save model if desired
@@ -473,7 +479,7 @@ def main(pargs):
                         checkpoint = {
                             'step': step,
                             'epoch': epoch,
-                            'model': net.state_dict(),
+                            'model': net_train.state_dict(),
                             'optimizer': optimizer.state_dict()
 		                }
                         torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )

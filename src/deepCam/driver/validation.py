@@ -37,7 +37,7 @@ except ImportError:
 
 
 def validate(pargs, comm_rank, comm_size,
-             step, epoch, 
+             device, step, epoch, 
              net, criterion, validation_loader, 
              logger, have_wandb, viz):
     
@@ -49,9 +49,9 @@ def validate(pargs, comm_rank, comm_size,
     #eval
     net.eval()
 
-    count_sum_val = torch.zeros((1), dtype=torch.float32, device=net.device)
-    loss_sum_val = torch.zeros((1), dtype=torch.float32, device=net.device)
-    iou_sum_val = torch.zeros((1), dtype=torch.float32, device=net.device)
+    count_sum_val = torch.zeros((1), dtype=torch.float32, device=device)
+    loss_sum_val = torch.zeros((1), dtype=torch.float32, device=device)
+    iou_sum_val = torch.zeros((1), dtype=torch.float32, device=device)
 
     # disable gradients
     with torch.no_grad():
@@ -64,8 +64,8 @@ def validate(pargs, comm_rank, comm_size,
 
             if not pargs.enable_dali:
                 #send to device
-                inputs_val = inputs_val.to(net.device)
-                label_val = label_val.to(net.device)
+                inputs_val = inputs_val.to(device)
+                label_val = label_val.to(device)
             else:
                 if inputs_val.numel() == 0:
                     # we are done
@@ -94,7 +94,7 @@ def validate(pargs, comm_rank, comm_size,
         
             # Compute score
             predictions_val = torch.max(outputs_val, 1)[1]
-            iou_val = metric.compute_score(predictions_val, label_val, num_classes=3)
+            iou_val = metric.compute_score_new(predictions_val, label_val, num_classes=3)
             iou_sum_val += iou_val
 
             # Visualize

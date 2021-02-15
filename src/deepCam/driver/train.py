@@ -37,8 +37,8 @@ except ImportError:
     pass
 
 
-def train_step(pargs, comm_rank, comm_size, 
-               step, epoch, 
+def train_step(pargs, comm_rank, comm_size,
+               device, step, epoch, 
                net, criterion, 
                optimizer, gscaler, scheduler,
                inputs, label, filename, 
@@ -46,8 +46,8 @@ def train_step(pargs, comm_rank, comm_size,
 
     if not pargs.enable_dali:
         # send to device
-        inputs = inputs.to(net.device)
-        label = label.to(net.device)
+        inputs = inputs.to(device)
+        label = label.to(device)
     
     # to NHWC
     if pargs.enable_nhwc:
@@ -117,11 +117,12 @@ def train_step(pargs, comm_rank, comm_size,
     
         # Compute score
         predictions = torch.max(outputs, 1)[1]
-        iou = metric.compute_score(predictions, label, num_classes=3)
+        iou = metric.compute_score_new(predictions, label, num_classes=3)
         iou_avg = iou.detach()
         dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
         iou_avg_train = iou_avg.item() / float(comm_size)
-    
+
+        # log values
         logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
         logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
         logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})

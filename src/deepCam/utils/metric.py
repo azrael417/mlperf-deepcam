@@ -62,7 +62,6 @@ def compute_score_new(prediction: Tensor, gt: Tensor, num_classes: int) -> Tenso
     tpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
     fpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
     fnt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
-    iout = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
 
     #cast type for GT tensor. not needed for new
     #pytorch but much cleaner
@@ -74,14 +73,14 @@ def compute_score_new(prediction: Tensor, gt: Tensor, num_classes: int) -> Tenso
     
     for j in range(0, num_classes):
         #true positve: prediction and gt agree and gt is of class j
-        tpt[j] += torch.sum(equal[gt == j])
+        tpt[j] = torch.sum(equal[gt == j])
         #false positive: prediction is of class j and gt not of class j
-        fpt[j] += torch.sum(not_equal[prediction == j])
+        fpt[j] = torch.sum(not_equal[prediction == j])
         #false negative: prediction is not of class j and gt is of class j
-        fnt[j] += torch.sum(not_equal[gt == j])
+        fnt[j] = torch.sum(not_equal[gt == j])
 
     # compute IoU
-    uniont = float(num_classes) * (tpt + fpt + fnt)
-    iout = torch.sum(torch.nan_to_num(tpt.float() / uniont.float(), nan=1.))
+    uniont = (tpt + fpt + fnt) * num_classes
+    iout = torch.sum(torch.nan_to_num(tpt.float() / uniont.float(), nan=1./float(num_classes)))
     
     return iout
