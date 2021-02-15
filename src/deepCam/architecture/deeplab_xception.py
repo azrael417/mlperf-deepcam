@@ -59,14 +59,15 @@ class SeparableConv2d_same(nn.Module):
 
         # compute padding here
         pad_beg, pad_end = compute_padding(kernel_size, rate=dilation)
-        self.padding = (pad_beg, pad_end, pad_beg, pad_end)
-        
-        self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size, stride, 0, dilation,
+        #self.padding = (pad_beg, pad_end, pad_beg, pad_end)
+        #self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size, stride, 0, dilation,
+        #                       groups=inplanes, bias=bias)
+        self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size, stride, (pad_beg, pad_beg), dilation,
                                groups=inplanes, bias=bias)
         self.pointwise = nn.Conv2d(inplanes, planes, 1, 1, 0, 1, 1, bias=bias)
 
     def forward(self, x):
-        x = F.pad(x, self.padding)
+        #x = F.pad(x, self.padding)
         x = self.conv1(x)
         x = self.pointwise(x)
         return x
