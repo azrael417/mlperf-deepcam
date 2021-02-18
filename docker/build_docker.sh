@@ -42,5 +42,5 @@ docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug
 #docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:profile_internal
 
 # gds
-docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds -f docker/Dockerfile.train.gds .
-docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds
+#docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds -f docker/Dockerfile.train.gds .
+#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds
