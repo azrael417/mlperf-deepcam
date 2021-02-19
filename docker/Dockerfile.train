@@ -53,6 +53,43 @@ RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 #install torchsummary
 RUN pip install torchsummary
 
+#install mpifileutils and dependencies
+RUN cd /tmp && mkdir -p /opt/mpifileutils/dependencies && \
+    wget https://github.com/hpc/libcircle/releases/download/v0.3/libcircle-0.3.0.tar.gz && \
+    tar -zxf libcircle-0.3.0.tar.gz && cd libcircle-0.3.0 && \
+    ./configure --prefix=/opt/mpifileutils/dependencies && \
+    make install && \
+    cd .. && rm -r libcircle-0.3.0
+RUN cd /tmp && \
+    wget https://github.com/llnl/lwgrp/releases/download/v1.0.3/lwgrp-1.0.3.tar.gz && \
+    tar -zxf lwgrp-1.0.3.tar.gz && cd lwgrp-1.0.3 && \
+    ./configure --prefix=/opt/mpifileutils/dependencies && \
+    make install && \
+    cd .. && rm -r lwgrp-1.0.3
+RUN cd /tmp && \
+    wget https://github.com/llnl/dtcmp/releases/download/v1.1.1/dtcmp-1.1.1.tar.gz && \
+    tar -zxf dtcmp-1.1.1.tar.gz && cd dtcmp-1.1.1 && \
+    ./configure prefix=/opt/mpifileutils/dependencies --with-lwgrp=/opt/mpifileutils/dependencies && \
+    make install && \
+    cd .. && rm -r dtcmp-1.1.1
+RUN cd /tmp && \
+    wget https://github.com/libarchive/libarchive/releases/download/3.5.1/libarchive-3.5.1.tar.gz && \
+    tar -zxf libarchive-3.5.1.tar.gz && cd libarchive-3.5.1 && \
+    ./configure --prefix=/opt/mpifileutils/dependencies && \
+    make install && \
+    cd .. && rm -r libarchive-3.5.1
+
+RUN cd /tmp && \
+    git clone --depth 1 https://github.com/hpc/mpifileutils && \
+    mkdir mpifileutils/build && \
+    cd mpifileutils/build && \
+    cmake .. \
+      	  -DCMAKE_INSTALL_PREFIX=/opt/mpifileutils \
+	  -DWITH_DTCMP_PREFIX=/opt/mpifileutils/dependencies \
+	  -DWITH_LibCircle_PREFIX=/opt/mpifileutils/dependencies && \
+    make install && \
+    cd ../../ && rm -r mpifileutils
+
 #copy additional stuff
 COPY src/deepCam /opt/deepCam
 COPY src/utils /opt/utils
