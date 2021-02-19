@@ -27,3 +27,11 @@ if [ "${mode}" == "broadcast" ]; then
     fi
     /opt/mpifileutils/bin/dbcast ${srcfile} ${dest_dir}/$(basename ${srcfile})
 fi
+
+# untar
+if [ "${mode}" == "untar" ]; then
+    local_rank=$(( ${PMIX_RANK} % 8 ))
+    if [ "${local_rank}" == "0" ]; then
+	time tar -xf ${dest_dir}/$(basename ${src_dir}).tar
+    fi
+fi

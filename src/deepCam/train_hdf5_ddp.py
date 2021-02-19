@@ -304,7 +304,7 @@ def main(pargs):
         train_size = train_set.global_size
 
     else:
-        train_dir = os.path.join(root_dir, "numpy", "train")
+        train_dir = os.path.join(root_dir, "train")
         train_loader = cam_dali.CamDaliDataloader(train_dir,
                                                   'data-*.npy',
                                                   'label-*.npy',
@@ -349,7 +349,7 @@ def main(pargs):
         validation_size = validation_set.global_size
         
     else:
-        validation_dir = os.path.join(root_dir, "numpy", "validation")
+        validation_dir = os.path.join(root_dir, "validation")
         validation_loader = cam_dali.CamDaliDataloader(validation_dir,
                                                        'data-*.npy',
                                                        'label-*.npy',
