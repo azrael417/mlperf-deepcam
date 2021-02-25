@@ -26,8 +26,11 @@ cd ..
 
 #training container
 #docker build -t tkurth/pytorch-bias_gan:latest .
-docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug -f docker/Dockerfile.train .
-docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug
+#docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug -f docker/Dockerfile.train .
+#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug
+
+docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp -f docker/Dockerfile.sharp .
+docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp
 
 ##tag for NERSC registry
 #docker tag gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug registry.services.nersc.gov/tkurth/mlperf-deepcam:debug
