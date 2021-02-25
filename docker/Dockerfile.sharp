@@ -1,0 +1,114 @@
+# The MIT License (MIT)
+#
+# Copyright (c) 2020 NVIDIA CORPORATION. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.02-py3-devel
+#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.12-py3-devel
+#FROM nvcr.io/nvidia/pytorch:20.12-py3
+
+# upgrade cuda
+COPY sys/cuda_11.3.0_465.10_linux.run /tmp/ 
+RUN cd /tmp && \
+    chmod +x cuda_*.run && \
+    ./cuda_*.run --silent --no-opengl-libs --toolkit && \
+    rm -f cuda_*.run
+
+# upgrade nccl
+COPY sys/libnccl-dev_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
+COPY sys/libnccl2_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
+RUN cd /tmp && \
+    dpkg -i libnccl2*.deb && dpkg -i libnccl-dev*.deb && \
+    apt update && \
+    apt -y install libnccl2=2.9.0a6-1+cuda11.3 libnccl-dev=2.9.0a6-1+cuda11.3
+
+# reinstall DALI
+RUN pip uninstall -y nvidia-dali-cuda110 && \
+    pip install --extra-index-url https://developer.download.nvidia.com/compute/redist/nightly nvidia-dali-nightly-cuda110
+
+#Install conda prereqs
+RUN conda config --add channels conda-forge \
+    && conda install matplotlib basemap basemap-data-hires pillow h5py
+ENV PROJ_LIB /opt/conda/share/proj
+
+#install mpi4py
+RUN pip install mpi4py
+
+#pip install more python modules
+RUN pip install wandb
+
+#install mlperf logging
+RUN pip install "git+https://github.com/mlperf/logging.git"
+
+#install gradual warmup
+RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
+
+#install torchsummary
+RUN pip install torchsummary
+
+##install mpifileutils and dependencies
+#RUN cd /tmp && mkdir -p /opt/mpifileutils/dependencies && \
+#    wget https://github.com/hpc/libcircle/releases/download/v0.3/libcircle-0.3.0.tar.gz && \
+#    tar -zxf libcircle-0.3.0.tar.gz && cd libcircle-0.3.0 && \
+#    ./configure --prefix=/opt/mpifileutils/dependencies && \
+#    make install && \
+#    cd .. && rm -r libcircle-0.3.0
+#RUN cd /tmp && \
+#    wget https://github.com/llnl/lwgrp/releases/download/v1.0.3/lwgrp-1.0.3.tar.gz && \
+#    tar -zxf lwgrp-1.0.3.tar.gz && cd lwgrp-1.0.3 && \
+#    ./configure --prefix=/opt/mpifileutils/dependencies && \
+#    make install && \
+#    cd .. && rm -r lwgrp-1.0.3
+#RUN cd /tmp && \
+#    wget https://github.com/llnl/dtcmp/releases/download/v1.1.1/dtcmp-1.1.1.tar.gz && \
+#    tar -zxf dtcmp-1.1.1.tar.gz && cd dtcmp-1.1.1 && \
+#    ./configure prefix=/opt/mpifileutils/dependencies --with-lwgrp=/opt/mpifileutils/dependencies && \
+#    make install && \
+#    cd .. && rm -r dtcmp-1.1.1
+#RUN cd /tmp && \
+#    wget https://github.com/libarchive/libarchive/releases/download/3.5.1/libarchive-3.5.1.tar.gz && \
+#    tar -zxf libarchive-3.5.1.tar.gz && cd libarchive-3.5.1 && \
+#    ./configure --prefix=/opt/mpifileutils/dependencies && \
+#    make install && \
+#    cd .. && rm -r libarchive-3.5.1
+#
+#RUN cd /tmp && \
+#    git clone --depth 1 https://github.com/hpc/mpifileutils && \
+#    mkdir mpifileutils/build && \
+#    cd mpifileutils/build && \
+#    cmake .. \
+#      	  -DCMAKE_INSTALL_PREFIX=/opt/mpifileutils \
+#	  -DWITH_DTCMP_PREFIX=/opt/mpifileutils/dependencies \
+#	  -DWITH_LibCircle_PREFIX=/opt/mpifileutils/dependencies && \
+#    make install && \
+#    cd ../../ && rm -r mpifileutils
+
+#copy additional stuff
+COPY src/deepCam /opt/deepCam
+COPY src/utils /opt/utils
+
+#init empty git repo so that wandb works
+RUN cd /opt/deepCam && git init
+
+#copy cert:
+RUN mkdir -p /opt/certs
+COPY no-git/wandb_cert.key /opt/certs/.wandbirc
+
+#create additional folders for mapping data in
+RUN mkdir -p /data
