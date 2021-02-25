@@ -50,14 +50,39 @@ class FPLoss(nn.Module):
         preds = torch.max(logit, 1)[1]
 
         #is fp 1
-        is_fp_one = (torch.eq(preds, 1) & torch.ne(preds, 1)).float()
+        is_fp_one = (torch.eq(preds, 1) & torch.ne(target, 1)).float()
         fp_matrix_one = (is_fp_one * self.fpw_1) + 1
         losses = torch.mul(fp_matrix_one, losses)
 
         #is fp 2
-        is_fp_two = (torch.eq(preds, 2) & torch.ne(preds, 2)).float()
+        is_fp_two = (torch.eq(preds, 2) & torch.ne(target, 2)).float()
         fp_matrix_two = (is_fp_two * self.fpw_2) + 1
         losses = torch.mul(fp_matrix_two, losses)
+
+        # average
+        loss = torch.mean(losses)
+
+        return loss
+        
+
+class CELoss(nn.Module):
+
+    def __init__(self, weight):
+
+        # init superclass
+        super(CELoss, self).__init__()
+
+        # instantiate loss
+        self.criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(weight)).float(), reduction='none')
+
+
+    def forward(self, logit, target):
+
+        # squeeze target
+        target = target.squeeze(1)
+        
+        # get losses and predictions
+        losses = self.criterion(logit, target.long())
 
         # average
         loss = torch.mean(losses)

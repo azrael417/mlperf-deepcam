@@ -212,7 +212,8 @@ def main(pargs):
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
     fpw_1 = 2.61461122397522257612
     fpw_2 = 1.71641974795896018744
-    criterion = losses.FPLoss(class_weights, fpw_1, fpw_2).to(device)
+    #criterion = losses.FPLoss(class_weights, fpw_1, fpw_2).to(device)
+    criterion = losses.CELoss(class_weights).to(device)
     if pargs.enable_jit:
         criterion = torch.jit.script(criterion)
 
