@@ -112,3 +112,11 @@ COPY no-git/wandb_cert.key /opt/certs/.wandbirc
 
 #create additional folders for mapping data in
 RUN mkdir -p /data
+
+# sharp settings
+ENV SHARP_COLL_LOG_LEVEL 3
+ENV UCX_TLS dc_x,cuda_copy,cuda_ipc
+#ENV UCX_NET_DEVICES mlx5_0:1
+ENV UCX_RNDV_THRESH 16384
+ENV OMPI_MCA_coll_hcoll_enable 0
+ENV NCCL_COLLNET_ENABLE 1
