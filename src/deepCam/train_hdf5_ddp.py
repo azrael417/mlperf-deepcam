@@ -237,7 +237,8 @@ def main(pargs):
     #make model distributed
     ddp_net = DDP(net, device_ids=[device.index],
                   output_device=[device.index],
-                  find_unused_parameters=True)
+                  find_unused_parameters=False,
+                  gradient_as_bucket_view=False)
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
