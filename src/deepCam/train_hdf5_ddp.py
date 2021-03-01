@@ -235,7 +235,9 @@ def main(pargs):
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
     #make model distributed
-    ddp_net = DDP(net, device_ids=[device.index], output_device=[device.index])
+    ddp_net = DDP(net, device_ids=[device.index],
+                  output_device=[device.index],
+                  find_unused_parameters=True)
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
