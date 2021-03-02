@@ -23,20 +23,38 @@ FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.02-py3-devel
 #FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.12-py3-devel
 #FROM nvcr.io/nvidia/pytorch:20.12-py3
 
-# upgrade cuda
-COPY sys/cuda_11.3.0_465.10_linux.run /tmp/ 
+#install SHARP dependencies
+COPY sys/librdmacm1_51mlnx1-1.51237_amd64.deb /tmp/
+COPY sys/libibumad3_51mlnx1-1.51237_amd64.deb /tmp/
+COPY sys/ucx_1.9.0-1.51237_amd64.deb /tmp/
 RUN cd /tmp && \
-    chmod +x cuda_*.run && \
-    ./cuda_*.run --silent --no-opengl-libs --toolkit && \
-    rm -f cuda_*.run
-
-# upgrade nccl
-COPY sys/libnccl-dev_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
-COPY sys/libnccl2_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
-RUN cd /tmp && \
-    dpkg -i libnccl2*.deb && dpkg -i libnccl-dev*.deb && \
+    dpkg -i librdmacm1*.deb && \
+    dpkg -i libibumad3*.deb && \
+    dpkg -i ucx*.deb && \
     apt update && \
-    apt -y install libnccl2=2.9.0a6-1+cuda11.3 libnccl-dev=2.9.0a6-1+cuda11.3
+    rm /tmp/librdmacm1*.deb /tmp/libibumad3*.deb /tmp/ucx*.deb
+
+# install SHARP
+COPY sys/sharp_2.2.0.MLNX20200721.2fd570a-1.51237_amd64.deb /tmp/
+RUN cd /tmp && \
+    dpkg -i sharp*.deb && \
+    apt update && \
+    rm /tmp/sharp*.deb
+
+## upgrade cuda
+#COPY sys/cuda_11.3.0_465.10_linux.run /tmp/ 
+#RUN cd /tmp && \
+#    chmod +x cuda_*.run && \
+#    ./cuda_*.run --silent --no-opengl-libs --toolkit && \
+#    rm -f cuda_*.run
+
+## upgrade nccl
+#COPY sys/libnccl-dev_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
+#COPY sys/libnccl2_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
+#RUN cd /tmp && \
+#    dpkg -i libnccl2*.deb && dpkg -i libnccl-dev*.deb && \
+#    apt update && \
+#    apt -y install libnccl2=2.9.0a6-1+cuda11.3 libnccl-dev=2.9.0a6-1+cuda11.3
 
 # reinstall DALI
 RUN pip uninstall -y nvidia-dali-cuda110 && \
@@ -114,9 +132,14 @@ COPY no-git/wandb_cert.key /opt/certs/.wandbirc
 RUN mkdir -p /data
 
 # sharp settings
-ENV SHARP_COLL_LOG_LEVEL 3
+ENV HPCX_SHARP_DIR /opt/mellanox/sharp
+ENV ENABLE_SHARP_COLL 1
+ENV SHARP_COLL_ENABLE_SAT 1
+#ENV SHARP_COLL_LOG_LEVEL 3
 ENV UCX_TLS dc_x,cuda_copy,cuda_ipc
+ENV UCX_MEMTYPE_CACHE n
 #ENV UCX_NET_DEVICES mlx5_0:1
 ENV UCX_RNDV_THRESH 16384
 ENV OMPI_MCA_coll_hcoll_enable 0
 ENV NCCL_COLLNET_ENABLE 1
+ENV NCCL_ALGO CollNet
