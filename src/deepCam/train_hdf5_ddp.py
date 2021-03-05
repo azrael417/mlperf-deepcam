@@ -238,7 +238,7 @@ def main(pargs):
     ddp_net = DDP(net, device_ids=[device.index],
                   output_device=[device.index],
                   find_unused_parameters=False,
-                  bucket_cap_mb=50,
+                  bucket_cap_mb=25,
                   gradient_as_bucket_view=False)
 
     #restart from checkpoint if desired

@@ -131,7 +131,7 @@ class NumpyReadPipeline(Pipeline):
 
 class CamDaliDataloader(object):
 
-    def init_files(self, root_dir, prefix_data, prefix_label, statsfile, file_list_data = None, file_list_label = None, transpose = True):
+    def init_files(self, root_dir, prefix_data, prefix_label, statsfile, file_list_data = None, file_list_label = None):
         self.root_dir = root_dir
         self.prefix_data = prefix_data
         self.prefix_label = prefix_label
