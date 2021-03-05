@@ -1,145 +1,279 @@
-# The MIT License (MIT)
-#
-# Copyright (c) 2020 NVIDIA CORPORATION. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal in
-# the Software without restriction, including without limitation the rights to
-# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-# the Software, and to permit persons to whom the Software is furnished to do so,
-# subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+FROM ubuntu:20.04 AS base
+ENV MOFED_VERSION 5.2-2.2.0.0
+ENV MARCH znver2
+ENV OPENMPI_VERSION 4.0.5
+ENV UCX_VERSION v1.10.0-rc4
+ENV GDRCOPY_VERSION v2.1
+ENV NCCL_VERSION 2.8.4-1+cuda11.2
 
-FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.02-py3-devel
-#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.12-py3-devel
-#FROM nvcr.io/nvidia/pytorch:20.12-py3
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    MELLANOX_VISIBLE_DEVICES=all
 
-#install SHARP dependencies
-COPY sys/librdmacm1_51mlnx1-1.51237_amd64.deb /tmp/
-COPY sys/libibumad3_51mlnx1-1.51237_amd64.deb /tmp/
-COPY sys/ucx_1.9.0-1.51237_amd64.deb /tmp/
-RUN cd /tmp && \
-    dpkg -i librdmacm1*.deb && \
-    dpkg -i libibumad3*.deb && \
-    dpkg -i ucx*.deb && \
-    apt update && \
-    rm /tmp/librdmacm1*.deb /tmp/libibumad3*.deb /tmp/ucx*.deb
+RUN apt-get update && apt-get install -y --no-install-recommends gnupg2 curl ca-certificates && \
+    curl --proto '=https' -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub | apt-key add - && \
+    echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
+    echo "deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2004/x86_64 /" > /etc/apt/sources.list.d/nvidia-ml.list && \
+    ln -s cuda-11.2 /usr/local/cuda && \
+    apt-get purge --autoremove -y curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# install SHARP
-COPY sys/sharp_2.2.0.MLNX20200721.2fd570a-1.51237_amd64.deb /tmp/
-RUN cd /tmp && \
-    dpkg -i sharp*.deb && \
-    apt update && \
-    rm /tmp/sharp*.deb
+FROM base AS devel
 
-## upgrade cuda
-#COPY sys/cuda_11.3.0_465.10_linux.run /tmp/ 
-#RUN cd /tmp && \
-#    chmod +x cuda_*.run && \
-#    ./cuda_*.run --silent --no-opengl-libs --toolkit && \
-#    rm -f cuda_*.run
+SHELL ["/bin/bash", "-c"]
 
-## upgrade nccl
-#COPY sys/libnccl-dev_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
-#COPY sys/libnccl2_2.9.0a6-1+cuda11.3_amd64.deb /tmp/
-#RUN cd /tmp && \
-#    dpkg -i libnccl2*.deb && dpkg -i libnccl-dev*.deb && \
-#    apt update && \
-#    apt -y install libnccl2=2.9.0a6-1+cuda11.3 libnccl-dev=2.9.0a6-1+cuda11.3
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        automake \
+        autotools-dev \
+        cuda-cudart-dev-11-2 \
+        libcurand-dev-11-2 \
+        cuda-compiler-11-2 \
+        cuda-nvcc-11-2 \
+        cuda-nvtx-11-2 \
+        curl \
+        wget \
+        g++ \
+        gcc \
+        git \
+        libc-dev \
+        libnuma-dev \
+        libtool \
+        make \
+        tar && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN cd /usr/local/src && \
+    curl --proto '=https' -fSsL "https://content.mellanox.com/ofed/MLNX_OFED-${MOFED_VERSION}/MLNX_OFED_LINUX-${MOFED_VERSION}-ubuntu20.04-x86_64.tgz" | tar xz && \
+    cd MLNX_OFED_LINUX-${MOFED_VERSION}-* && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ./DEBS/libibverbs* ./DEBS/ibverbs-providers* ./DEBS/libibumad* && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs
+ENV CFLAGS="-O3 -march=${MARCH} -flto"
+ENV CXXFLAGS="-O3 -march=${MARCH} -flto"
+
+RUN cd /usr/local/src && \
+    curl --proto '=https' -fSsL "https://github.com/nvidia/gdrcopy/tarball/${GDRCOPY_VERSION}" | tar xz && \
+    cd NVIDIA-gdrcopy* && \
+    PREFIX=/usr/local DESTLIB=/usr/local/lib make -j lib_install
+
+RUN cd /usr/local/src && \
+    curl --proto '=https' -fSsL "https://github.com/openucx/ucx/tarball/${UCX_VERSION}" | tar xz && \
+    cd openucx-ucx* && \
+    ./autogen.sh && ./configure     \
+        --prefix=/usr/local         \
+        --enable-shared             \
+        --disable-static            \
+        --disable-doxygen-doc       \
+        --enable-optimizations      \
+        --enable-cma                \
+        --enable-devel-headers      \
+        --with-cuda=/usr/local/cuda \
+        --with-verbs                \
+        --with-dm                   \
+        --with-gdrcopy=/usr/local   \
+        --enable-mt                 \
+        --with-mlx5-dv &&           \
+    make -j &&                      \
+    make -j install-strip &&        \
+    ldconfig
+
+RUN cd /usr/local/src && \
+    curl -fSsL --proto '=https' "https://www.open-mpi.org/software/ompi/v${OPENMPI_VERSION:0:3}/downloads/openmpi-${OPENMPI_VERSION}.tar.gz" | tar xz && \
+    cd openmpi-${OPENMPI_VERSION} && \
+    ./configure                          \
+        --prefix=/usr/local              \
+        --enable-shared                  \
+        --disable-static                 \
+        --with-verbs                     \
+        --with-cuda=/usr/local/cuda      \
+        --with-ucx=/usr/local            \
+        --enable-mca-no-build=btl-uct    \
+        --with-pmix=internal             \
+        --disable-getpwuid &&            \
+    make -j &&                           \
+    make -j install-strip &&             \
+    ldconfig
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libnccl-dev=${NCCL_VERSION} libnccl2=${NCCL_VERSION} && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN cd /usr/local/src && \
+    NCCL_TESTS_VERSION=bd0755c95c16a751dca7d5ef8994e76f3cd7642a && \
+    curl --proto '=https' -fSsL https://github.com/NVIDIA/nccl-tests/archive/${NCCL_TESTS_VERSION}.tar.gz | tar xz && \
+    cd nccl-tests-${NCCL_TESTS_VERSION} && \
+    make MPI=1 && \
+    install -m 755 build/all_* build/broadcast_* build/reduce_* /usr/local/bin
+
+COPY sys/hpcx-sharp-2.2.0 /opt/mellanox/sharp
+
+RUN echo "/opt/mellanox/sharp/lib" >> /etc/ld.so.conf.d/mellanox.conf && \
+    ldconfig
+
+RUN cd /usr/local/src && \
+    NCCL_SHARP_PLUGIN_VERSION="795231e98de59d1f6ce665f74886c17f403c3e9d" && \
+    curl --proto '=https' -fSsL https://github.com/Mellanox/nccl-rdma-sharp-plugins/archive/${NCCL_SHARP_PLUGIN_VERSION}.tar.gz | tar -xz && \
+    cd nccl-rdma-sharp-plugins-${NCCL_SHARP_PLUGIN_VERSION} && \
+    ./autogen.sh && \
+    ./configure \
+        --enable-shared \
+        --disable-static \
+        --with-cuda=/usr/local/cuda \
+	      --with-sharp=/opt/mellanox/sharp && \
+    make -j && \
+    make -j install-strip && \
+    ldconfig
+
+RUN find /usr/local/lib -name '*.la' -delete -o -name '*.a' -delete
+
+FROM base
+
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cuda-cudart-11-2 \
+        cuda-compat-11-2 \
+        hwloc \
+        libnuma1 \
+        numactl \
+        curl \
+        wget \
+        git \
+        libnccl2=${NCCL_VERSION} && \
+    apt-get update && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN cd /usr/local/src && \
+    curl --proto '=https' -fSsL "https://content.mellanox.com/ofed/MLNX_OFED-${MOFED_VERSION}/MLNX_OFED_LINUX-${MOFED_VERSION}-ubuntu20.04-x86_64.tgz" | tar xz && \
+    cd MLNX_OFED_LINUX-${MOFED_VERSION}-* && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ./DEBS/libibverbs1* ./DEBS/ibverbs-providers* ./DEBS/libibumad3* ./DEBS/ibverbs-utils* ./DEBS/librdmacm1* && \
+    apt-get purge --autoremove -y curl && \
+    rm -rf /var/lib/apt/lists/* /usr/local/src/*
+
+COPY --from=devel /usr/local/bin   /usr/local/bin
+COPY --from=devel /usr/local/lib   /usr/local/lib
+COPY --from=devel /usr/local/etc   /usr/local/etc
+COPY --from=devel /usr/local/share /usr/local/share
+
+COPY sys/hpcx-sharp-2.2.0 /opt/mellanox/sharp
+
+RUN echo "/opt/mellanox/sharp/lib" >> /etc/ld.so.conf.d/mellanox.conf && \
+    ldconfig
+
+# pytorch dependencies
+# libjsoncpp-dev and libboost-program-options-dev are needed DLprof
+RUN apt-get update && apt-get install -y --no-install-recommends \
+         autoconf \
+         automake \
+         graphviz \
+         libatlas-base-dev \
+         libboost-program-options-dev \
+         libgoogle-glog-dev \
+         libbz2-dev \
+         libleveldb-dev \
+         liblmdb-dev \
+         libprotobuf-dev \
+         libsnappy-dev \
+         libtool \
+         libjsoncpp-dev \
+         nasm \
+         protobuf-compiler \
+         pkg-config \
+         cython \
+         unzip \
+         sox \
+         curl \
+         g++ \
+         gcc \
+         git \
+         build-essential \
+         libsndfile1 \
+         libpng-dev && \
+     rm -rf /var/lib/apt/lists/*
+
+
+RUN curl -L -k -o /opt/cmake-3.14.6-Linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.14.6/cmake-3.14.6-Linux-x86_64.tar.gz && \
+        pushd /opt && \
+        tar -xzf cmake-3.14.6-Linux-x86_64.tar.gz && \
+        rm cmake-3.14.6-Linux-x86_64.tar.gz && \
+        popd
+ENV PATH /opt/cmake-3.14.6-Linux-x86_64/bin/:$PATH
+
+ARG PYVER=3.8
+# WAR for curl failing to download miniconda
+#RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh  && \
+RUN wget -O ~/miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh  && \
+     chmod +x ~/miniconda.sh && \
+     ~/miniconda.sh -b -p /opt/conda && \
+     rm ~/miniconda.sh && \
+     #avoiding openblas_0.3.6 for issue on skylake cpu
+     /opt/conda/bin/conda install -y python=$PYVER cmake conda-build numpy pyyaml scipy ipython mkl=2019.4 mkl-include=2019.4 ninja spacy mock numba openblas!=0.3.6 && \
+     /opt/conda/bin/conda clean -ya
+
+ENV PATH /opt/conda/bin:$PATH
+#RUN conda install -c pytorch magma-cuda90
+
+# Adding WAR: https://github.com/pytorch/pytorch/issues/31136
+RUN pip install hypothesis==4.50.8
+
+# WAR for: http://nvbugs/200656973
+RUN pip install tqdm --upgrade
+
+RUN OPENCV_VERSION=3.4.11 && \
+    cd / && \
+    wget -q -O - https://github.com/Itseez/opencv/archive/${OPENCV_VERSION}.tar.gz | tar -xzf - && \
+    cd /opencv-${OPENCV_VERSION} && mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/usr \
+          -DWITH_CUDA=OFF -DWITH_1394=OFF \
+          -DBUILD_opencv_cudalegacy=OFF -DBUILD_opencv_stitching=OFF -DWITH_IPP=OFF .. && \
+    make -j"$(nproc)" install && \
+    rm -rf /opencv-${OPENCV_VERSION}
+
+RUN JPEG_TURBO_VERSION=1.5.3 && \
+    wget -q -O - https://github.com/libjpeg-turbo/libjpeg-turbo/archive/${JPEG_TURBO_VERSION}.tar.gz | tar -xzf - && \
+    cd libjpeg-turbo-${JPEG_TURBO_VERSION} && \
+    autoreconf -fiv && \
+    ./configure --enable-shared --prefix=/usr 2>&1 >/dev/null && \
+    make -j"$(nproc)" install 2>&1 >/dev/null && \
+    rm -rf /libjpeg-turbo-${JPEG_TURBO_VERSION}
+
+#####
+
+# prereqs
+RUN pip install numpy
+
+# pytorch prereqs
+COPY sys/magma-cuda /magma-cuda
+ENV CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda
+RUN conda build magma-cuda/ && \
+    conda install `conda build --output magma-cuda` && \
+    rm -rf conda `conda build --output magma-cuda` && \
+    /opt/conda/bin/conda clean -ya
+
+# pytorch
+RUN cd /opt && git clone --recursive --depth 1 --branch v1.7.1 https://github.com/pytorch/pytorch.git && \
+    cd pytorch && pip install --no-cache-dir -r requirements.txt && \
+ENV TORCH_CUDA_ARCH_LIST="7.0 7.5 8.0 8.6+PTX"    
+
+RUN cd pytorch && \
+    CUDA_HOME="/usr/local/cuda" \
+    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" \
+    NCCL_INCLUDE_DIR="/usr/include/" \
+    NCCL_LIB_DIR="/usr/lib/" \
+    USE_SYSTEM_NCCL=1 \
+    USE_OPENCV=1 \
+    pip install --no-cache-dir -v .
 
 # reinstall DALI
 RUN pip uninstall -y nvidia-dali-cuda110 && \
     pip install --extra-index-url https://developer.download.nvidia.com/compute/redist/nightly nvidia-dali-nightly-cuda110
 
-#Install conda prereqs
-RUN conda config --add channels conda-forge \
-    && conda install matplotlib basemap basemap-data-hires pillow h5py
-ENV PROJ_LIB /opt/conda/share/proj
 
-#install mpi4py
-RUN pip install mpi4py
-
-#pip install more python modules
-RUN pip install wandb
-
-#install mlperf logging
-RUN pip install "git+https://github.com/mlperf/logging.git"
-
-#install gradual warmup
-RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
-
-#install torchsummary
-RUN pip install torchsummary
-
-##install mpifileutils and dependencies
-#RUN cd /tmp && mkdir -p /opt/mpifileutils/dependencies && \
-#    wget https://github.com/hpc/libcircle/releases/download/v0.3/libcircle-0.3.0.tar.gz && \
-#    tar -zxf libcircle-0.3.0.tar.gz && cd libcircle-0.3.0 && \
-#    ./configure --prefix=/opt/mpifileutils/dependencies && \
-#    make install && \
-#    cd .. && rm -r libcircle-0.3.0
-#RUN cd /tmp && \
-#    wget https://github.com/llnl/lwgrp/releases/download/v1.0.3/lwgrp-1.0.3.tar.gz && \
-#    tar -zxf lwgrp-1.0.3.tar.gz && cd lwgrp-1.0.3 && \
-#    ./configure --prefix=/opt/mpifileutils/dependencies && \
-#    make install && \
-#    cd .. && rm -r lwgrp-1.0.3
-#RUN cd /tmp && \
-#    wget https://github.com/llnl/dtcmp/releases/download/v1.1.1/dtcmp-1.1.1.tar.gz && \
-#    tar -zxf dtcmp-1.1.1.tar.gz && cd dtcmp-1.1.1 && \
-#    ./configure prefix=/opt/mpifileutils/dependencies --with-lwgrp=/opt/mpifileutils/dependencies && \
-#    make install && \
-#    cd .. && rm -r dtcmp-1.1.1
-#RUN cd /tmp && \
-#    wget https://github.com/libarchive/libarchive/releases/download/3.5.1/libarchive-3.5.1.tar.gz && \
-#    tar -zxf libarchive-3.5.1.tar.gz && cd libarchive-3.5.1 && \
-#    ./configure --prefix=/opt/mpifileutils/dependencies && \
-#    make install && \
-#    cd .. && rm -r libarchive-3.5.1
-#
-#RUN cd /tmp && \
-#    git clone --depth 1 https://github.com/hpc/mpifileutils && \
-#    mkdir mpifileutils/build && \
-#    cd mpifileutils/build && \
-#    cmake .. \
-#      	  -DCMAKE_INSTALL_PREFIX=/opt/mpifileutils \
-#	  -DWITH_DTCMP_PREFIX=/opt/mpifileutils/dependencies \
-#	  -DWITH_LibCircle_PREFIX=/opt/mpifileutils/dependencies && \
-#    make install && \
-#    cd ../../ && rm -r mpifileutils
-
-#copy additional stuff
-COPY src/deepCam /opt/deepCam
-COPY src/utils /opt/utils
-
-#init empty git repo so that wandb works
-RUN cd /opt/deepCam && git init
-
-#copy cert:
-RUN mkdir -p /opt/certs
-COPY no-git/wandb_cert.key /opt/certs/.wandbirc
-
-#create additional folders for mapping data in
-RUN mkdir -p /data
-
-# sharp settings
-ENV HPCX_SHARP_DIR /opt/mellanox/sharp
-ENV ENABLE_SHARP_COLL 1
-ENV SHARP_COLL_ENABLE_SAT 1
-#ENV SHARP_COLL_LOG_LEVEL 3
-ENV UCX_TLS dc_x,cuda_copy,cuda_ipc
-ENV UCX_MEMTYPE_CACHE n
-#ENV UCX_NET_DEVICES mlx5_0:1
-ENV UCX_RNDV_THRESH 16384
-ENV OMPI_MCA_coll_hcoll_enable 0
-ENV NCCL_COLLNET_ENABLE 1
-ENV NCCL_ALGO CollNet
+ENV CUDA_CACHE_DISABLE=1 \
+    OMPI_MCA_pml=ucx \
+    OMPI_MCA_btl=^openib,uct \
+    UCX_TLS=rc_x,shm,self \
+    NCCL_DEBUG=WARN
