@@ -75,6 +75,7 @@ class CamDataset(Dataset):
                  allow_uneven_distribution = False,
                  shuffle = False,
                  preprocess = True,
+                 transpose = True,
                  augmentations = [],
                  comm_size = 1, comm_rank = 0, seed = 12345):
         
@@ -83,6 +84,7 @@ class CamDataset(Dataset):
         self.channels = channels
         self.shuffle = shuffle
         self.preprocess = preprocess
+        self.transpose = transpose
         self.augmentations = augmentations
         self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) if x.endswith('.h5') ] )
         self.comm_size = comm_size
@@ -108,8 +110,8 @@ class CamDataset(Dataset):
             data_scale = 1. / ( f["climate"]["maxval"][self.channels] - data_shift )
 
         #reshape into broadcastable shape
-        self.data_shift = np.reshape( data_shift, (data_shift.shape[0], 1, 1) ).astype(np.float32)
-        self.data_scale = np.reshape( data_scale, (data_scale.shape[0], 1, 1) ).astype(np.float32)
+        self.data_shift = np.reshape( data_shift, (1, 1, data_shift.shape[0]) ).astype(np.float32)
+        self.data_scale = np.reshape( data_scale, (1, 1, data_scale.shape[0]) ).astype(np.float32)
 
         if comm_rank == 0:
             print("Initialized dataset with ", self.global_size, " samples.")
@@ -136,24 +138,25 @@ class CamDataset(Dataset):
             data = f["climate/data"][..., self.channels]
             label = f["climate/labels_0"][...]
         
-        #transpose to NCHW
-        data = np.transpose(data, (2,0,1))
-        
         #preprocess
         data = self.data_scale * (data - self.data_shift)
 
-        #augment
+        #augment HWC data
         if self.augmentations:
-            # roll
+            # roll in W
             if "roll" in self.augmentations:
-                shift = int(self.rng.random() * data.shape[2])
-                data = np.roll(data, shift, axis=-1)
-                label = np.roll(label, shift, axis=-1)
+                shift = int(self.rng.random() * data.shape[1])
+                data = np.roll(data, shift, axis=1)
+                label = np.roll(label, shift, axis=1)
 
-            # flip vertically (mirror horizontally)
+            # flip in H (mirror horizontally)
             if "flip" in self.augmentations:
                 if self.rng.random() > 0.5:
-                    data = np.flip(data, axis=1).copy()
-                    label = np.flip(label, axis=1).copy()
+                    data = np.flip(data, axis=0).copy()
+                    label = np.flip(label, axis=0).copy()
+
+        if self.transpose:
+            #transpose to NCHW
+            data = np.transpose(data, (2,0,1))
         
         return data, label, filename

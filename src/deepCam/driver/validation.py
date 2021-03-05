@@ -73,7 +73,9 @@ def validate(pargs, comm_rank, comm_size,
 
             # to NHWC
             if pargs.enable_nhwc:
-                inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
+                N, H, W, C = (1, 768, 1152, 16)
+                inputs_val = torch.as_strided(inputs_val, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
+                #inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
             
             # forward pass
             #with amp.autocast(enabled = pargs.enable_amp):

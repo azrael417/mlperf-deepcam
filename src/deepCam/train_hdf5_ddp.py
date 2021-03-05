@@ -289,6 +289,7 @@ def main(pargs):
                                    allow_uneven_distribution = False,
                                    shuffle = True, 
                                    preprocess = True,
+                                   transpose = not pargs.enable_nhwc,
                                    augmentations = pargs.data_augmentations,
                                    comm_size = 1,
                                    comm_rank = 0)
@@ -325,6 +326,7 @@ def main(pargs):
                                                   shuffle = True,
                                                   is_validation = False,
                                                   lazy_init = True,
+                                                  transpose = not pargs.enable_nhwc,
                                                   augmentations = pargs.data_augmentations,
                                                   read_gpu = False,
                                                   use_mmap = False,
@@ -340,6 +342,7 @@ def main(pargs):
                                         allow_uneven_distribution = True,
                                         shuffle = (pargs.max_validation_steps is not None),
                                         preprocess = True,
+                                        transpose = not pargs.enable_nhwc,
                                         augmentations = [],
                                         comm_size = comm_size,
                                         comm_rank = comm_rank)
@@ -370,6 +373,7 @@ def main(pargs):
                                                        shuffle = True,
                                                        is_validation = True,
                                                        lazy_init = True,
+                                                       transpose = not pargs.enable_nhwc,
                                                        augmentations = [],
                                                        read_gpu = False,
                                                        use_mmap = False,

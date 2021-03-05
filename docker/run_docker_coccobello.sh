@@ -21,7 +21,7 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  
 
-data_root=/raid/tkurth/cam5_data
+data_root=/raid/tkurth/cam5_data/numpy
 
 #inference runs
 docker run --gpus=all \

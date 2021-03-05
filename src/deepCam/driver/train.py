@@ -51,7 +51,9 @@ def train_step(pargs, comm_rank, comm_size,
     
     # to NHWC
     if pargs.enable_nhwc:
-        inputs = inputs.contiguous(memory_format = torch.channels_last)
+        N, H, W, C = (pargs.local_batch_size, 768, 1152, 16)
+        inputs = torch.as_strided(inputs, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
+        #inputs = inputs.contiguous(memory_format = torch.channels_last)
     
     # forward pass
     if pargs.enable_jit:

@@ -12,7 +12,7 @@ from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 class NumpyReadPipeline(Pipeline):
     def __init__(self, file_root, data_files, label_files, batch_size, mean, stddev, num_threads,
                  device, io_device, num_shards=1, shard_id=0, shuffle=False, stick_to_shard=False,
-                 is_validation=False, lazy_init = False, augmentations = [], use_mmap=True, seed=333):
+                 is_validation=False, lazy_init = False, transpose = True, augmentations = [], use_mmap=True, seed=333):
         super(NumpyReadPipeline, self).__init__(batch_size, num_threads, device.index, seed)
         
         self.data = ops.NumpyReader(device = io_device,
@@ -46,7 +46,10 @@ class NumpyReadPipeline(Pipeline):
                                      seed = seed)
 
         self.normalize = ops.Normalize(device = "gpu", mean = mean, stddev = stddev, scale = 1.)
-        self.transpose = ops.Transpose(device = "gpu", perm = [2, 0, 1])
+
+        self.do_transpose = transpose
+        if self.do_transpose:
+            self.transpose = ops.Transpose(device = "gpu", perm = [2, 0, 1])
 
         self.augmentations = augmentations
         if self.augmentations:
@@ -116,18 +119,19 @@ class NumpyReadPipeline(Pipeline):
                 data = data * not_condition + data_blurred * condition
                 label = self.icast(label * not_condition + label_blurred * condition)
 
-        # transpose data to NCHW
-        data = self.transpose(data)
-
         # normalize now:
         data = self.normalize(data)
+
+        # transpose data to NCHW if requested
+        if self.do_transpose:
+            data = self.transpose(data)
                 
         return data, label
 
 
 class CamDaliDataloader(object):
 
-    def init_files(self, root_dir, prefix_data, prefix_label, statsfile, file_list_data = None, file_list_label = None):
+    def init_files(self, root_dir, prefix_data, prefix_label, statsfile, file_list_data = None, file_list_label = None, transpose = True):
         self.root_dir = root_dir
         self.prefix_data = prefix_data
         self.prefix_label = prefix_label
@@ -158,8 +162,8 @@ class CamDaliDataloader(object):
             data_stddev = (f["climate"]["maxval"][...] - data_mean)
             
         #reshape into broadcastable shape: channels first
-        self.data_mean = np.reshape( data_mean, (data_mean.shape[0], 1, 1) ).astype(np.float32)
-        self.data_stddev = np.reshape( data_stddev, (data_stddev.shape[0], 1, 1) ).astype(np.float32)
+        self.data_mean = np.reshape( data_mean, (1, 1, data_mean.shape[0]) ).astype(np.float32)
+        self.data_stddev = np.reshape( data_stddev, (1, 1, data_stddev.shape[0]) ).astype(np.float32)
 
         # clean up old iterator
         if self.iterator is not None:
@@ -189,6 +193,7 @@ class CamDaliDataloader(object):
                                           shuffle = self.shuffle,
                                           is_validation = self.is_validation,
                                           lazy_init = self.lazy_init,
+                                          transpose = self.transpose,
                                           augmentations = self.augmentations,
                                           use_mmap = self.use_mmap,
                                           seed = self.seed)
@@ -214,7 +219,7 @@ class CamDaliDataloader(object):
                  num_threads = 1, device = torch.device("cpu"),
                  num_shards = 1, shard_id = 0, stick_to_shard = False,
                  shuffle = False, is_validation = False,
-                 lazy_init = False,augmentations = [],
+                 lazy_init = False, transpose = True, augmentations = [],
                  use_mmap = True, read_gpu = False, seed = 333):
     
         # read filenames first
@@ -228,6 +233,7 @@ class CamDaliDataloader(object):
         self.pipeline = None
         self.iterator = None
         self.lazy_init = lazy_init
+        self.transpose = transpose
         self.augmentations = augmentations
         self.num_shards = num_shards
         self.shard_id = shard_id
