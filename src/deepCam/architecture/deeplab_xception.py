@@ -539,7 +539,14 @@ class DeepLabv3_plus(nn.Module):
         x3 = self.aspp3(x)
         x4 = self.aspp4(x)
         x5 = self.global_avg_pool(x)
-        x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
+
+        # this is very expensive in BW
+        #x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
+
+        # this is the same and much cheaper
+        tiled = (1, 1, *(x4.size()[2:]))
+        x5 = torch.tile(x5, tiled)
+        
         x = torch.cat((x1, x2, x3, x4, x5), dim=1)
 
         x = self.conv1(x)
