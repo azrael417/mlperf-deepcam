@@ -33,5 +33,9 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, last_step = -1):
         milestones = [ int(x) for x in scheduler_arg["milestones"].split() ]
         gamma = float(scheduler_arg["decay_rate"])
         return optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma, last_epoch = last_step)
+    elif scheduler_arg["type"] == "cosine_annealing":
+        t_max = int(scheduler_arg["t_max"])
+        eta_min = 0. if "eta_min" not in scheduler_arg else float(scheduler_arg["eta_min"])
+        return optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = t_max, eta_min = eta_min)
     else:
         raise ValueError("Error, scheduler type {} not supported.".format(scheduler_arg["type"]))
