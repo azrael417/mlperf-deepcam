@@ -14,6 +14,9 @@ class NumpyReadPipeline(Pipeline):
                  device, io_device, num_shards=1, shard_id=0, shuffle=False, stick_to_shard=False,
                  is_validation=False, lazy_init = False, transpose = True, augmentations = [], use_mmap=True, seed=333):
         super(NumpyReadPipeline, self).__init__(batch_size, num_threads, device.index, seed)
+
+        self.data_size = 1152*768*16*4
+        self.label_size = 1152*768*4
         
         self.data = ops.NumpyReader(device = io_device,
                                     file_root = file_root,
@@ -28,6 +31,7 @@ class NumpyReadPipeline(Pipeline):
                                     pad_last_batch = True,
                                     dont_use_mmap = not use_mmap,
                                     lazy_init = lazy_init,
+                                    bytes_per_sample_hint = self.data_size,
                                     seed = seed)
         
         self.label = ops.NumpyReader(device = io_device,
@@ -43,19 +47,26 @@ class NumpyReadPipeline(Pipeline):
                                      pad_last_batch = True,
                                      dont_use_mmap = not use_mmap,
                                      lazy_init = lazy_init,
+                                     bytes_per_sample_hint = self.label_size,
                                      seed = seed)
 
-        self.normalize = ops.Normalize(device = "gpu", mean = mean, stddev = stddev, scale = 1.)
+        self.normalize = ops.Normalize(device = "gpu",
+                                       mean = mean,
+                                       stddev = stddev,
+                                       scale = 1.,
+                                       bytes_per_sample_hint = self.data_size)
 
         self.do_transpose = transpose
         if self.do_transpose:
-            self.transpose = ops.Transpose(device = "gpu", perm = [2, 0, 1])
+            self.transpose = ops.Transpose(device = "gpu",
+                                           perm = [2, 0, 1],
+                                           bytes_per_sample_hint = self.data_size)
 
         self.augmentations = augmentations
         if self.augmentations:
             # casts
-            self.fcast = ops.Cast(dtype=types.DALIDataType.FLOAT32)
-            self.icast = ops.Cast(dtype=types.DALIDataType.INT32)
+            self.fcast = ops.Cast(dtype=types.DALIDataType.FLOAT32, bytes_per_sample_hint = self.label_size)
+            self.icast = ops.Cast(dtype=types.DALIDataType.INT32, bytes_per_sample_hint = self.label_size)
             self.bcast = ops.Cast(dtype=types.DALIDataType.BOOL)
 
             # random stuff
@@ -67,20 +78,26 @@ class NumpyReadPipeline(Pipeline):
 
             # special ops
             if "flip" in self.augmentations:
-                self.flip = ops.Flip(device = "gpu", depthwise = 0, horizontal = 0)
+                self.flip = ops.Flip(device = "gpu",
+                                     depthwise = 0,
+                                     horizontal = 0,
+                                     bytes_per_sample_hint = self.data_size)
 
             if "jitter" in self.augmentations:
                 self.jitter_data = ops.Jitter(device = "gpu",
                                               nDegree = 4,
-                                              seed = seed)
+                                              seed = seed,
+                                              bytes_per_sample_hint = self.data_size)
                 self.jitter_label = ops.Jitter(device = "gpu",
                                                nDegree = 4,
-                                               seed = seed)
+                                               seed = seed,
+                                               bytes_per_sample_hint = self.label_size)
 
             if "gauss" in self.augmentations:
                 self.blur = ops.GaussianBlur(device = "gpu",
                                              sigma = 1.,
-                                             window_size = 3)
+                                             window_size = 3,
+                                             bytes_per_sample_hint = self.data_size)
 
 
     def define_graph(self):
