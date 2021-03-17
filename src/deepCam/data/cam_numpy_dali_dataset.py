@@ -65,7 +65,7 @@ class NumpyReadPipeline(Pipeline):
         self.augmentations = augmentations
         if self.augmentations:
             # casts
-            self.fcast = ops.Cast(dtype=types.DALIDataType.FLOAT32, bytes_per_sample_hint = self.label_size)
+            self.fcast = ops.Cast(dtype=types.DALIDataType.FLOAT, bytes_per_sample_hint = self.label_size)
             self.icast = ops.Cast(dtype=types.DALIDataType.INT32, bytes_per_sample_hint = self.label_size)
             self.bcast = ops.Cast(dtype=types.DALIDataType.BOOL)
 
