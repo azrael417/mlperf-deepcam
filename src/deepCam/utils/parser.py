@@ -37,6 +37,7 @@ def parse_arguments():
     AP.add_argument("--lr_schedule", action=StoreDictKeyPair)
     AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
+    AP.add_argument("--batchnorm_group_size", type=int, default=1, help="Process group size for sync batchnorm")
     AP.add_argument("--enable_amp", action='store_true')
     AP.add_argument("--enable_jit", action='store_true')
     AP.add_argument("--enable_dali", action='store_true')

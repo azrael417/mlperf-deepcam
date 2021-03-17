@@ -61,7 +61,7 @@ def get_size():
     return size
 
 
-def init(method):
+def init(method, batchnorm_group_size=1):
     #get master address and port
     if method == "nccl-openmpi":
         addrport = os.getenv("PMIX_SERVER_URI2").split("//")[1]
@@ -111,3 +111,19 @@ def init(method):
         
     else:
         raise NotImplementedError()
+
+    # create local group
+    num_groups = get_size() // batchnorm_group_size
+    assert (num_groups * batchnorm_group_size == get_size()), "Error, the number of ranks have to be evenly divisible by batchnorm group size"
+    my_rank = get_rank()
+    local_group = None
+    if batchnorm_group_size > 1:
+        for i in range(num_groups):
+            start = i * torch.cuda.device_count()
+            end = start + torch.cuda.device_count()
+            ranks = list(range(start, end))
+            tmp_group = torch.distributed.new_group(ranks = ranks)
+            if my_rank in ranks:
+                local_group = tmp_group
+
+    return local_group

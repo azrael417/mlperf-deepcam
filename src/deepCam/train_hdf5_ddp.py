@@ -95,7 +95,7 @@ def main(pargs):
     global have_wandb
 
     #init distributed training
-    comm.init(pargs.wireup_method)
+    comm_local_group = comm.init(pargs.wireup_method, pargs.batchnorm_group_size)
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
@@ -200,7 +200,8 @@ def main(pargs):
     net = deeplab_xception.DeepLabv3_plus(n_input = n_input_channels, 
                                           n_classes = n_output_channels, 
                                           os=16, pretrained=False, 
-                                          rank = comm_rank)
+                                          rank = comm_rank,
+                                          process_group = comm_local_group)
     net.to(device)
 
     if pargs.enable_nhwc:
