@@ -119,8 +119,8 @@ def init(method, batchnorm_group_size=1):
     local_group = None
     if batchnorm_group_size > 1:
         for i in range(num_groups):
-            start = i * torch.cuda.device_count()
-            end = start + torch.cuda.device_count()
+            start = i * batchnorm_group_size
+            end = start + batchnorm_group_size
             ranks = list(range(start, end))
             tmp_group = torch.distributed.new_group(ranks = ranks)
             if my_rank in ranks:
