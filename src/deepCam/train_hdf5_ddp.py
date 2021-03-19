@@ -99,7 +99,7 @@ def main(pargs):
     comm_rank = comm.get_rank()
     comm_local_rank = comm.get_local_rank()
     comm_size = comm.get_size()
-
+    
     # set up logging
     pargs.logging_frequency = max([pargs.logging_frequency, 1])
     log_file = os.path.normpath(os.path.join(pargs.output_dir, "logs", pargs.run_tag + ".log"))

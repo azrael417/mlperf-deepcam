@@ -73,70 +73,6 @@ class SeparableConv2d_same(nn.Module):
         return x
 
 
-class ZeroPad(nn.Module):
-    def __init__(self, planes, pad):
-        super(ZeroPad, self).__init__()
-        self.planes = planes
-        self.pad = pad
-        self.start = self.planes - self.pad
-        
-    def forward(self, x):
-        x[:,self.start:,...] = 0.
-        return x
-
-
-class PaddedBlock(nn.Module):
-    def __init__(self, planes, planes_pad, reps, dilation=1, start_with_relu=True, grow_first=True, is_last=False,
-                 normalizer=nn.BatchNorm2d, process_group=None):
-        super(PaddedBlock, self).__init__()
-        
-        self.relu = nn.ReLU(inplace=True)
-        rep = []
-
-        if grow_first:
-            rep.append(self.relu)
-            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
-            rep.append(ZeroPad(planes, planes_pad))
-            if process_group is not None:
-                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
-            else:
-                rep.append(normalizer(planes))
-
-        for i in range(reps - 1):
-            rep.append(self.relu)
-            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
-            rep.append(ZeroPad(planes, planes_pad))
-            if process_group is not None:
-                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
-            else:
-                rep.append(normalizer(planes))
-
-        if not grow_first:
-            rep.append(self.relu)
-            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
-            rep.append(ZeroPad(planes, planes_pad))
-            if process_group is not None:
-                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
-            else:
-                rep.append(normalizer(planes))
-
-        if not start_with_relu:
-            rep = rep[1:]
-
-        if is_last:
-            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1))
-            rep.append(ZeroPad(planes, planes_pad))
-            
-        self.rep = nn.Sequential(*rep)
-        
-    
-    def forward(self, inp):
-        x = self.rep(inp)
-        x += inp
-
-        return x
-
-
 class Block(nn.Module):
     def __init__(self, inplanes, planes, reps, stride=1, dilation=1, start_with_relu=True, grow_first=True, is_last=False,
                  normalizer=nn.BatchNorm2d, process_group=None):
@@ -264,7 +200,7 @@ class Xception(nn.Module):
         # Exit flow
         self.block20 = Block(728, 1024, reps=2, stride=1, dilation=exit_block_rates[0],
                              start_with_relu=True, grow_first=False, is_last=True, normalizer=normalizer, process_group=process_group)
-
+        
         self.conv3 = SeparableConv2d_same(1024, 1536, 3, stride=1, dilation=exit_block_rates[1])
         if process_group is not None:
             self.bn3 = nn.SyncBatchNorm(1536, process_group=process_group)

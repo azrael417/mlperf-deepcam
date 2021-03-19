@@ -19,7 +19,7 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.02-py3-devel
+FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.03-py3-devel
 #FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:20.12-py3-devel
 #FROM nvcr.io/nvidia/pytorch:20.12-py3
 
