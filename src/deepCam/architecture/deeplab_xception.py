@@ -73,6 +73,70 @@ class SeparableConv2d_same(nn.Module):
         return x
 
 
+class ZeroPad(nn.Module):
+    def __init__(self, planes, pad):
+        super(ZeroPad, self).__init__()
+        self.planes = planes
+        self.pad = pad
+        self.start = self.planes - self.pad
+        
+    def forward(self, x):
+        #x[:,self.start:,...] = 0.
+        return x
+
+
+class PaddedBlock(nn.Module):
+    def __init__(self, planes, planes_pad, reps, dilation=1, start_with_relu=True, grow_first=True, is_last=False,
+                 normalizer=nn.BatchNorm2d, process_group=None):
+        super(PaddedBlock, self).__init__()
+        
+        self.relu = nn.ReLU(inplace=True)
+        rep = []
+
+        if grow_first:
+            rep.append(self.relu)
+            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
+            rep.append(ZeroPad(planes, planes_pad))
+            if process_group is not None:
+                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
+            else:
+                rep.append(normalizer(planes))
+
+        for i in range(reps - 1):
+            rep.append(self.relu)
+            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
+            rep.append(ZeroPad(planes, planes_pad))
+            if process_group is not None:
+                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
+            else:
+                rep.append(normalizer(planes))
+
+        if not grow_first:
+            rep.append(self.relu)
+            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1, dilation=dilation))
+            rep.append(ZeroPad(planes, planes_pad))
+            if process_group is not None:
+                rep.append(nn.SyncBatchNorm(planes, process_group = process_group))
+            else:
+                rep.append(normalizer(planes))
+
+        if not start_with_relu:
+            rep = rep[1:]
+
+        if is_last:
+            rep.append(SeparableConv2d_same(planes, planes, 3, stride=1))
+            rep.append(ZeroPad(planes, planes_pad))
+            
+        self.rep = nn.Sequential(*rep)
+        
+    
+    def forward(self, inp):
+        x = self.rep(inp)
+        x += inp
+
+        return x
+
+
 class Block(nn.Module):
     def __init__(self, inplanes, planes, reps, stride=1, dilation=1, start_with_relu=True, grow_first=True, is_last=False,
                  normalizer=nn.BatchNorm2d, process_group=None):
@@ -141,6 +205,39 @@ class Block(nn.Module):
         return x
 
 
+class PaddedGrowBlock(nn.Module):
+            
+    def __init__(self, inplanes, planes, pad, dilation=1, normalizer=nn.BatchNorm2d, process_group=None):
+        super(PaddedGrowBlock, self).__init__()
+        
+        self.skip = nn.Sequential(ZeroPad(inplanes, pad),
+                                  nn.Conv2d(inplanes, planes, 1, stride=1, bias=False))
+        if process_group is not None:
+            self.skipbn = nn.SyncBatchNorm(planes, process_group = process_group)
+        else:
+            self.skipbn = normalizer(planes)
+        
+        self.rep = nn.Sequential(ZeroPad(inplanes, pad),
+                                 nn.ReLU(inplace=True),
+                                 SeparableConv2d_same(inplanes, inplanes, 3, stride=1, dilation=dilation),
+                                 normalizer(inplanes) if process_group is None else nn.SyncBatchNorm(inplanes, process_group = process_group),
+                                 ZeroPad(inplanes, pad),
+                                 nn.ReLU(inplace=True),
+                                 SeparableConv2d_same(inplanes, planes, 3, stride=1, dilation=dilation),
+                                 normalizer(planes) if process_group is None else nn.SyncBatchNorm(planes, process_group = process_group),
+                                 SeparableConv2d_same(planes, planes, 3, stride=1))
+                                    
+    def forward(self, inp):
+        x = self.rep(inp)
+
+        skip = self.skip(inp)
+        skip = self.skipbn(skip)
+
+        x += skip
+        
+        return x
+
+
 class Xception(nn.Module):
     """
     Modified Alighed Xception
@@ -176,30 +273,58 @@ class Xception(nn.Module):
 
         self.block1 = Block(64, 128, reps=2, stride=2, start_with_relu=False, normalizer=normalizer, process_group=process_group)
         self.block2 = Block(128, 256, reps=2, stride=2, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block3 = Block(256, 728, reps=2, stride=entry_block3_stride, start_with_relu=True, grow_first=True,
+        # no pad
+        #self.block3 = Block(256, 728, reps=2, stride=entry_block3_stride, start_with_relu=True, grow_first=True,
+        #                    is_last=True, normalizer=normalizer, process_group=process_group)
+        # pad
+        self.block3 = Block(256, 736, reps=2, stride=entry_block3_stride, start_with_relu=True, grow_first=True,
                             is_last=True, normalizer=normalizer, process_group=process_group)
+        self.zp3 = ZeroPad(736, 8)
 
         # Middle flow
-        self.block4  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block5  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block6  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block7  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block8  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block9  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block10 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block11 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block12 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block13 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block14 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block15 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block16 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block17 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block18 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
-        self.block19 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        # no pad
+        #self.block4  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block5  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block6  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block7  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block8  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block9  = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block10 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block11 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block12 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block13 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block14 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block15 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block16 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block17 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block18 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        #self.block19 = Block(728, 728, reps=3, stride=1, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        
+        # pad
+        self.block4  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block5  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block6  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block7  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block8  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block9  = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block10 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block11 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block12 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block13 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block14 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block15 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block16 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block17 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block18 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
+        self.block19 = PaddedBlock(736, 8, reps=3, dilation=middle_block_rate, start_with_relu=True, grow_first=True, normalizer=normalizer, process_group=process_group)
 
         # Exit flow
-        self.block20 = Block(728, 1024, reps=2, stride=1, dilation=exit_block_rates[0],
-                             start_with_relu=True, grow_first=False, is_last=True, normalizer=normalizer, process_group=process_group)
+        # no pad
+        #self.block20 = Block(728, 1024, reps=2, stride=1, dilation=exit_block_rates[0],
+        #                     start_with_relu=True, grow_first=False, is_last=True, normalizer=normalizer, process_group=process_group)
+        
+        # pad
+        self.block20 = PaddedGrowBlock(736, 1024, 8, dilation=exit_block_rates[0], normalizer=normalizer, process_group=process_group)
         
         self.conv3 = SeparableConv2d_same(1024, 1536, 3, stride=1, dilation=exit_block_rates[1])
         if process_group is not None:
@@ -240,6 +365,9 @@ class Xception(nn.Module):
         low_level_feat = x
         x = self.block2(x)
         x = self.block3(x)
+        
+        # pad
+        x = self.zp3(x)
 
         # Middle flow
         x = self.block4(x)
@@ -386,13 +514,14 @@ class DeconvUpsampler(nn.Module):
         super(DeconvUpsampler, self).__init__()
 
         # deconvs
-        if process_group is not None:
+        if process_group is None:
             self.deconv1 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
                                          normalizer(256),
                                          nn.ReLU(),
                                          nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
                                          normalizer(256),
                                          nn.ReLU())
+            
             self.conv1 = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
                                        normalizer(256),
                                        nn.ReLU(),
@@ -400,6 +529,7 @@ class DeconvUpsampler(nn.Module):
                                        normalizer(256),
                                        nn.ReLU(),
                                        nn.Conv2d(256, 256, kernel_size=1, stride=1))
+            
             self.deconv2 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
                                          normalizer(256),
                                          nn.ReLU())
@@ -410,6 +540,7 @@ class DeconvUpsampler(nn.Module):
                                          nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
                                          nn.SyncBatchNorm(256, process_group=process_group),
                                          nn.ReLU())
+            
             self.conv1 = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
                                        nn.SyncBatchNorm(256, process_group=process_group),
                                        nn.ReLU(),
@@ -417,6 +548,7 @@ class DeconvUpsampler(nn.Module):
                                        nn.SyncBatchNorm(256, process_group=process_group),
                                        nn.ReLU(),
                                        nn.Conv2d(256, 256, kernel_size=1, stride=1))
+            
             self.deconv2 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
                                          nn.SyncBatchNorm(256, process_group=process_group),
                                          nn.ReLU())
