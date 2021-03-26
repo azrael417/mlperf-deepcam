@@ -24,6 +24,7 @@ import os
 
 # torch
 import torch
+import torch.cuda.amp as amp
 import torch.distributed as dist
 
 # custom stuff
@@ -78,13 +79,15 @@ def validate(pargs, comm_rank, comm_size,
                 #inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
             
             # forward pass
-            #with amp.autocast(enabled = pargs.enable_amp):
-            outputs_val = net.forward(inputs_val)
+            with amp.autocast(enabled = False):
+                outputs_val = net.forward(inputs_val)
 
-            # NCHW
-            if pargs.enable_nhwc:
-                outputs_val = outputs_val.contiguous(memory_format = torch.contiguous_format)
-        
+                # NCHW
+                if pargs.enable_nhwc:
+                    outputs_val = outputs_val.contiguous(memory_format = torch.contiguous_format)
+
+                outputs_val = outputs_val.float()
+                    
             # Compute loss
             loss_val = criterion(outputs_val, label_val)
 

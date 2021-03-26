@@ -236,10 +236,13 @@ def main(pargs):
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
     #make model distributed
+    bucket_cap_mb = 25
+    if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
+        bucket_cap_mb = 110 if pargs.enable_amp else 220
     ddp_net = DDP(net, device_ids=[device.index],
                   output_device=[device.index],
                   find_unused_parameters=False,
-                  bucket_cap_mb=25,
+                  bucket_cap_mb=bucket_cap_mb,
                   gradient_as_bucket_view=False)
 
     #restart from checkpoint if desired
@@ -386,9 +389,16 @@ def main(pargs):
     #    tmp_shape = train_loader.shapes[0]
     #    input_shape = (tmp_shape[2], tmp_shape[0], tmp_shape[1])
     #    summary(net.module, input_size = input_shape)
+    if comm_rank == 0:
+        print(net)
+    # print parameters
+    if comm_rank == 0:
+        print("Total number of elements:", sum(p.numel() for p in net.parameters() if p.requires_grad))
 
     # jit stuff
     if pargs.enable_jit:
+        # wait for everybody
+        dist.barrier()
         # input_shape:
         if pargs.enable_dali:
             tshapes = train_loader.shapes[0]

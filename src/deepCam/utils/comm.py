@@ -117,7 +117,7 @@ def init(method, batchnorm_group_size=1):
     assert (num_groups * batchnorm_group_size == get_size()), "Error, the number of ranks have to be evenly divisible by batchnorm group size"
     my_rank = get_rank()
     local_group = None
-    if batchnorm_group_size > 1:
+    if batchnorm_group_size > 0:
         for i in range(num_groups):
             start = i * batchnorm_group_size
             end = start + batchnorm_group_size

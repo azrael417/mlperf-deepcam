@@ -29,4 +29,4 @@ docker run --gpus=all \
        --cap-add=SYS_ADMIN \
        --volume "${data_root}:/data:rw" \
        --volume /home/cuda/tkurth/DALI/dali/test/python:/tests:rw \
-       --workdir "/opt/deepCam/run_scripts" -it gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug /bin/bash
+       --workdir "/opt/deepCam/run_scripts" -it gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:syncbn /bin/bash
