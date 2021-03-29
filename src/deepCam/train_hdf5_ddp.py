@@ -478,7 +478,7 @@ def main(pargs):
             distributed_train_sampler.set_epoch(epoch)
 
         # epoch loop
-        with torch.autograd.profiler.emit_nvtx(enabled = True):
+        with torch.autograd.profiler.emit_nvtx(enabled = False):
             for inputs, label, filename in train_loader:
                 
                 step = train_step(pargs, comm_rank, comm_size,

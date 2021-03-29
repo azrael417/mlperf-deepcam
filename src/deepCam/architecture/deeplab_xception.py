@@ -33,6 +33,17 @@ from typing import List
 # import hack
 from groupbn.batch_norm import BatchNorm2d_NHWC
 
+
+#class GBN(nn.Module):
+#    def __init__(self, num_features, fuse_relu=False, process_group=None):
+#        super(GBN, self).__init__()
+#
+#        self.bn = nn.BatchNorm2d(num_features)
+#
+#    def forward(self, x):
+#        return self.bn(x)
+
+
 class GBN(nn.Module):
     def __init__(self, num_features, fuse_relu=False, process_group=None):
         super(GBN, self).__init__()
@@ -462,19 +473,24 @@ class DeepLabv3_plus(nn.Module):
         self.upsample = DeconvUpsampler(n_classes, process_group = process_group)
 
     def forward(self, input):
+        torch.cuda.nvtx.range_push("xception")
         x, low_level_features = self.xception_features(input)
+        torch.cuda.nvtx.range_pop()
 
         # ASPP step
+        torch.cuda.nvtx.range_push("aspp")
         x1 = self.aspp1(x)
         x2 = self.aspp2(x)
         x3 = self.aspp3(x)
         x4 = self.aspp4(x)
         x5 = self.global_avg_pool(x)
+        torch.cuda.nvtx.range_pop()
 
         # this is very expensive in BW
         #x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
 
         # this is the same and much cheaper
+        torch.cuda.nvtx.range_push("feature_extraction")
         tiled = (1, 1, *(x4.size()[2:]))
         x5 = torch.tile(x5, tiled)
         
@@ -488,9 +504,12 @@ class DeepLabv3_plus(nn.Module):
         low_level_features = self.conv2(low_level_features)
         low_level_features = self.bn2(low_level_features)
         low_level_features = self.relu(low_level_features)
+        torch.cuda.nvtx.range_pop()
 
         # decoder / upsampling logic
+        torch.cuda.nvtx.range_push("decode")
         x = self.upsample(x, low_level_features, input.size())
+        torch.cuda.nvtx.range_pop()
 
         return x
 
