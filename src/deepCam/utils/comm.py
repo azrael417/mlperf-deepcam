@@ -104,6 +104,10 @@ def init(method, batchnorm_group_size=1):
         dist.init_process_group(backend = "nccl",
                                 rank = rank,
                                 world_size = world_size)
+    elif method == "dummy":
+        rank = 0
+        world_size = 1
+        pass
         
     elif method == "mpi":
         #init DDP
@@ -116,8 +120,9 @@ def init(method, batchnorm_group_size=1):
     num_groups = get_size() // batchnorm_group_size
     assert (num_groups * batchnorm_group_size == get_size()), "Error, the number of ranks have to be evenly divisible by batchnorm group size"
     my_rank = get_rank()
+    world_size = get_size()
     local_group = None
-    if batchnorm_group_size > 0:
+    if world_size > 1 and batchnorm_group_size > 0:
         for i in range(num_groups):
             start = i * batchnorm_group_size
             end = start + batchnorm_group_size

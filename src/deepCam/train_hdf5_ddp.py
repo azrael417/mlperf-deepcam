@@ -239,11 +239,15 @@ def main(pargs):
     bucket_cap_mb = 25
     if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
         bucket_cap_mb = 110 if pargs.enable_amp else 220
-    ddp_net = DDP(net, device_ids=[device.index],
-                  output_device=[device.index],
-                  find_unused_parameters=False,
-                  bucket_cap_mb=bucket_cap_mb,
-                  gradient_as_bucket_view=False)
+
+    if comm_size > 1:
+        ddp_net = DDP(net, device_ids=[device.index],
+                      output_device=[device.index],
+                      find_unused_parameters=False,
+                      bucket_cap_mb=bucket_cap_mb,
+                      gradient_as_bucket_view=False)
+    else:
+        ddp_net = net
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
@@ -411,17 +415,20 @@ def main(pargs):
 
         # backup old network
         net_validate = net
-        
+
         # NHWC if requested
         if pargs.enable_nhwc:
             train_example = train_example.contiguous(memory_format = torch.channels_last)
             validation_example = validation_example.contiguous(memory_format = torch.channels_last)
 
+        # compile the model
+        ddp_handle = ddp_net.module if comm_size > 1 else ddp_net
         if pargs.enable_amp:
             with amp.autocast(enabled = pargs.enable_amp):
-                ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
+                ddp_handle = torch.jit.trace(ddp_handle, train_example, check_trace = False)
         else:
-            ddp_net.module = torch.jit.script(ddp_net.module)
+            ddp_handle = torch.jit.script(ddp_handle)
+
         net_train = ddp_net
             
     else:

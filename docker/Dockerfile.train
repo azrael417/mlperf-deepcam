@@ -19,7 +19,8 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:master-py3-devel
+#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:master-py3-devel
+FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.03-py3-devel
 
 ## install gds
 COPY sys/gpudirect-storage-local-repo-ubuntu2004-cuda-11.2-0.9.1_0.9.1-1_amd64.deb /tmp/
@@ -37,45 +38,48 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libibumad3 && \
     rm -rf /var/lib/apt/lists/*
 
-# GDRCopy
-ENV GDRCOPY_VERSION=v2.2
-RUN cd /usr/local/src && \
-    curl --proto '=https' -fSsL "https://github.com/nvidia/gdrcopy/tarball/${GDRCOPY_VERSION}" | tar xz && \
-    cd NVIDIA-gdrcopy* && \
-    PREFIX=/usr/local DESTLIB=/usr/local/lib make -j lib_install && \
-    ldconfig
+## GDRCopy
+#ENV GDRCOPY_VERSION=v2.2
+#RUN cd /usr/local/src && \
+#    curl --proto '=https' -fSsL "https://github.com/nvidia/gdrcopy/tarball/${GDRCOPY_VERSION}" | tar xz && \
+#    cd NVIDIA-gdrcopy* && \
+#    PREFIX=/usr/local DESTLIB=/usr/local/lib make -j lib_install && \
+#    ldconfig
 
-# SHARP + HCOLL
-RUN mkdir /opt/hpcx && \
-    curl -fSsL "https://content.mellanox.com/hpc/hpc-x/v2.8.1/hpcx-v2.8.1-gcc-MLNX_OFED_LINUX-5.2-2.2.0.0-ubuntu20.04-x86_64.tbz" | \
-    tar --strip-components 1 --wildcards -C /opt/hpcx -xj '*/sharp' '*/hcoll' && \
-    find /opt/hpcx -name '*.la' -delete -o -name '*.a' -delete && \
-    echo "/opt/hpcx/sharp/lib" >> /etc/ld.so.conf.d/hpcx.conf &&  \
-    echo "/opt/hpcx/hcoll/lib" >> /etc/ld.so.conf.d/hpcx.conf &&  \
-    ldconfig
+## SHARP + HCOLL
+#RUN mkdir /opt/hpcx && \
+#    curl -fSsL "https://content.mellanox.com/hpc/hpc-x/v2.8.1/hpcx-v2.8.1-gcc-MLNX_OFED_LINUX-5.2-2.2.0.0-ubuntu20.04-x86_64.tbz" | \
+#    tar --strip-components 1 --wildcards -C /opt/hpcx -xj '*/sharp' '*/hcoll' && \
+#    find /opt/hpcx -name '*.la' -delete -o -name '*.a' -delete && \
+#    echo "/opt/hpcx/sharp/lib" >> /etc/ld.so.conf.d/hpcx.conf &&  \
+#    echo "/opt/hpcx/hcoll/lib" >> /etc/ld.so.conf.d/hpcx.conf &&  \
+#    ldconfig
 
-# NCCL SHARP Plugin
-ENV NCCL_SHARP_PLUGIN_VERSION=hpcx-v2.8.0
-RUN cd /usr/local/src && \
-    curl --proto '=https' -fSsL https://github.com/Mellanox/nccl-rdma-sharp-plugins/archive/${NCCL_SHARP_PLUGIN_VERSION}.tar.gz | tar xz && \
-    cd nccl-rdma-sharp-plugins-${NCCL_SHARP_PLUGIN_VERSION} && \
-    ./autogen.sh &&                                            \
-    ./configure                                                \
-        --enable-shared                                        \
-        --disable-static                                       \
-        --with-ucx=/usr/local/ucx                              \
-        --with-cuda=/usr/local/cuda                            \
-        --with-sharp=/opt/hpcx/sharp &&                        \
-    make -j &&                                                 \
-    make -j install-strip &&                                   \
-    ldconfig
+## NCCL SHARP Plugin
+#ENV NCCL_SHARP_PLUGIN_VERSION=hpcx-v2.8.0
+#RUN cd /usr/local/src && \
+#    curl --proto '=https' -fSsL https://github.com/Mellanox/nccl-rdma-sharp-plugins/archive/${NCCL_SHARP_PLUGIN_VERSION}.tar.gz | tar xz && \
+#    cd nccl-rdma-sharp-plugins-${NCCL_SHARP_PLUGIN_VERSION} && \
+#    ./autogen.sh &&                                            \
+#    ./configure                                                \
+#        --enable-shared                                        \
+#        --disable-static                                       \
+#        --with-ucx=/usr/local/ucx                              \
+#        --with-cuda=/usr/local/cuda                            \
+#        --with-sharp=/opt/hpcx/sharp &&                        \
+#    make -j &&                                                 \
+#    make -j install-strip &&                                   \
+#    ldconfig
 
-# SHARP stuff
-ENV SHARP_COLL_LOCK_ON_COMM_INIT 1
-ENV SHARP_COLL_NUM_COLL_GROUP_RESOURCE_ALLOC_THRESHOLD 0
-ENV SHARP_COLL_ENABLE_SAT 1
-ENV NCCL_COLLNET_ENABLE 1
+## SHARP stuff
+#ENV SHARP_COLL_LOCK_ON_COMM_INIT 1
+#ENV SHARP_COLL_NUM_COLL_GROUP_RESOURCE_ALLOC_THRESHOLD 0
+#ENV SHARP_COLL_ENABLE_SAT 1
+#ENV NCCL_COLLNET_ENABLE 1
 #ENV SHARP_COLL_SHARPD_SOCKET_NAME sharpd_hpcx_2.4.2
+
+# reinstall NCCL
+#RUN installNCCL.sh 2.9.5
 
 # reinstall DALI
 ENV DALI_VERSION 1.0
@@ -89,8 +93,8 @@ RUN conda config --add channels conda-forge \
     && conda install matplotlib basemap basemap-data-hires pillow h5py
 ENV PROJ_LIB /opt/conda/share/proj
 
-#install mpi4py
-RUN pip install mpi4py
+##install mpi4py
+#RUN pip install mpi4py
 
 #pip install more python modules
 RUN pip install wandb
