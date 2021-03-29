@@ -240,14 +240,11 @@ def main(pargs):
     if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
         bucket_cap_mb = 110 if pargs.enable_amp else 220
 
-    if comm_size > 1:
-        ddp_net = DDP(net, device_ids=[device.index],
-                      output_device=[device.index],
-                      find_unused_parameters=False,
-                      bucket_cap_mb=bucket_cap_mb,
-                      gradient_as_bucket_view=False)
-    else:
-        ddp_net = net
+    ddp_net = DDP(net, device_ids=[device.index],
+                  output_device=[device.index],
+                  find_unused_parameters=False,
+                  bucket_cap_mb=bucket_cap_mb,
+                  gradient_as_bucket_view=False)
 
     #restart from checkpoint if desired
     #if (comm_rank == 0) and (pargs.checkpoint):
@@ -422,12 +419,12 @@ def main(pargs):
             validation_example = validation_example.contiguous(memory_format = torch.channels_last)
 
         # compile the model
-        ddp_handle = ddp_net.module if comm_size > 1 else ddp_net
+        #ddp_handle = ddp_net.module
         if pargs.enable_amp:
             with amp.autocast(enabled = pargs.enable_amp):
-                ddp_handle = torch.jit.trace(ddp_handle, train_example, check_trace = False)
+                ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
         else:
-            ddp_handle = torch.jit.script(ddp_handle)
+            ddp_net.module = torch.jit.script(ddp_net.module)
 
         net_train = ddp_net
             

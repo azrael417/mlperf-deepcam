@@ -114,16 +114,14 @@ def train_step(pargs, comm_rank, comm_size,
     
         # allreduce for loss
         loss_avg = loss.detach()
-        if dist.is_initialized():
-            dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
+        dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
         loss_avg_train = loss_avg.item() / float(comm_size)
     
         # Compute score
         predictions = torch.max(outputs, 1)[1]
         iou = metric.compute_score_new(predictions, label, num_classes=3)
         iou_avg = iou.detach()
-        if dist.is_initialized():
-            dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
+        dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
         iou_avg_train = iou_avg.item() / float(comm_size)
 
         # log values

@@ -129,10 +129,9 @@ def validate(pargs, comm_rank, comm_size,
                 break
         
         # average the validation loss
-        if dist.is_initialized():
-            dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM, async_op=False)
-            dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
-            dist.all_reduce(iou_sum_val, op=dist.ReduceOp.SUM, async_op=False)
+        dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM, async_op=False)
+        dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)
+        dist.all_reduce(iou_sum_val, op=dist.ReduceOp.SUM, async_op=False)
         loss_avg_val = loss_sum_val.item() / count_sum_val.item()
         iou_avg_val = iou_sum_val.item() / count_sum_val.item()
 
