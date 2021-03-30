@@ -55,6 +55,7 @@ from utils import parser
 from utils import losses
 from utils import parsing_helpers as ph
 from utils import bn_stats_average as bnsa
+from utils import metric
 from data import cam_hdf5_dataset as cam
 from data import cam_numpy_dali_dataset as cam_dali
 from architecture import deeplab_xception
