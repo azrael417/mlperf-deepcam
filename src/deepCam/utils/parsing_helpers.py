@@ -24,6 +24,15 @@ import numpy as np
 import torch
 import torch.optim as optim
 
+try:
+    import apex.optimizers as aoptim
+    import apex.contrib.optimizers as acoptim
+    have_apex = True
+except ImportError:
+    from utils import optimizer as uoptim
+    print("NVIDIA APEX not found")
+    have_apex = False
+
 def get_lr_schedule(start_lr, scheduler_arg, optimizer, last_step = -1):
     #add the initial_lr to the optimizer
     optimizer.param_groups[0]["initial_lr"] = start_lr
@@ -39,3 +48,22 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, last_step = -1):
         return optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = t_max, eta_min = eta_min)
     else:
         raise ValueError("Error, scheduler type {} not supported.".format(scheduler_arg["type"]))
+
+
+def get_optimizer(net, pargs):
+    optimizer = None
+    if pargs.optimizer == "Adam":
+        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+    elif pargs.optimizer == "AdamW":
+        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+    elif pargs.optimizer == "LAMB":
+        if have_apex:
+            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+            #from apex.contrib.optimizers.distributed_fused_lamb import DistributedFusedLAMB
+            #optimizer = DistributedFusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+        else:
+            optimizer = uoptim.Lamb(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay, clamp_value = torch.iinfo(torch.int32).max)
+    else:
+        raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
+
+    return optimizer

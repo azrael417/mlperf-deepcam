@@ -51,57 +51,43 @@ def train_step(pargs, comm_rank, comm_size,
     
     # to NHWC
     if pargs.enable_nhwc:
-        torch.cuda.nvtx.range_push("NHWC")
         N, H, W, C = (pargs.local_batch_size, 768, 1152, 16)
         inputs = torch.as_strided(inputs, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
         #inputs = inputs.contiguous(memory_format = torch.channels_last)
-        torch.cuda.nvtx.range_pop()
     
     # forward pass
     if pargs.enable_jit:
         # JIT
-        torch.cuda.nvtx.range_push("forward")
         outputs = net.forward(inputs)
-        torch.cuda.nvtx.range_pop()
         
-        torch.cuda.nvtx.range_push("loss")
         with amp.autocast(enabled = pargs.enable_amp):
             # to NCHW
             if pargs.enable_nhwc:
                 outputs = outputs.contiguous(memory_format = torch.contiguous_format)
             loss = criterion(outputs, label)
-        torch.cuda.nvtx.range_pop()
     else:
         # NO-JIT
         with amp.autocast(enabled = pargs.enable_amp):
-            torch.cuda.nvtx.range_push("forward")
             outputs = net.forward(inputs)
-            torch.cuda.nvtx.range_pop()
             
-            torch.cuda.nvtx.range_push("loss")
             # to NCHW
             if pargs.enable_nhwc:
                 outputs = outputs.contiguous(memory_format = torch.contiguous_format)
             loss = criterion(outputs, label)
-            torch.cuda.nvtx.range_pop()
     
     # Backprop
     #optimizer.zero_grad(set_to_none = True)
-    torch.cuda.nvtx.range_push("optimizer")
     optimizer.zero_grad()
     gscaler.scale(loss).backward()
     gscaler.step(optimizer)
     gscaler.update()
-    torch.cuda.nvtx.range_pop()
     
     # step counter
     step += 1
     
     if pargs.lr_schedule:
-        torch.cuda.nvtx.range_push("scheduler")
         current_lr = scheduler.get_last_lr()[0]
         scheduler.step()
-        torch.cuda.nvtx.range_pop()
     
     #visualize if requested
     if (viz is not None) and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
@@ -134,10 +120,8 @@ def train_step(pargs, comm_rank, comm_size,
         loss_avg_train = loss_avg.item() / float(comm_size)
     
         # Compute score
-        torch.cuda.nvtx.range_push("score")
         predictions = torch.max(outputs, 1)[1]
         iou = metric.compute_score_new(predictions, label, num_classes=3)
-        torch.cuda.nvtx.range_pop()
         iou_avg = iou.detach()
         dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
         iou_avg_train = iou_avg.item() / float(comm_size)

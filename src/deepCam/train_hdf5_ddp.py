@@ -74,14 +74,6 @@ from utils import visualizer as vizc
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 
-# APEX
-try:
-    import apex.optimizers as aoptim
-    have_apex = True
-except ImportError:
-    from utils import optimizer as uoptim
-    have_apex = False
-
 # amp
 import torch.cuda.amp as amp
 
@@ -231,18 +223,7 @@ def main(pargs):
         criterion = torch.jit.script(criterion)
 
     #select optimizer
-    optimizer = None
-    if pargs.optimizer == "Adam":
-        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-    elif pargs.optimizer == "AdamW":
-        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-    elif pargs.optimizer == "LAMB":
-        if have_apex:
-            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-        else:
-            optimizer = uoptim.Lamb(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay, clamp_value = torch.iinfo(torch.int32).max)
-    else:
-        raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
+    optimizer = ph.get_optimizer(net, pargs)
     
     # gradient scaler
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)

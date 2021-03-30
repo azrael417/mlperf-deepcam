@@ -11,7 +11,7 @@ class StoreDictKeyPair(ap.Action):
 
 def parse_arguments():
     AP = ap.ArgumentParser()
-    AP.add_argument("--wireup_method", type=str, default="nccl-openmpi", choices=["nccl-openmpi", "nccl-slurm", "nccl-slurm-pmi", "mpi"], help="Specify what is used for wiring up the ranks")
+    AP.add_argument("--wireup_method", type=str, default="nccl-openmpi", choices=["dummy", "nccl-openmpi", "nccl-slurm", "nccl-slurm-pmi", "mpi"], help="Specify what is used for wiring up the ranks")
     AP.add_argument("--wandb_certdir", type=str, default="/opt/certs", help="Directory in which to find the certificate for wandb logging.")
     AP.add_argument("--run_tag", type=str, help="Unique run tag, to allow for better identification")
     AP.add_argument("--output_dir", type=str, help="Directory used for storing output. Needs to read/writeable from rank 0")

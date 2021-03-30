@@ -50,7 +50,7 @@ from torch.utils.data import DistributedSampler
 from torchsummary import summary
 
 # Custom
-from driver import train_step, validate
+from driver import validate
 from utils import parser
 from utils import losses
 from utils import parsing_helpers as ph
@@ -73,14 +73,6 @@ from utils import visualizer as vizc
 # DDP
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
-
-# APEX
-try:
-    import apex.optimizers as aoptim
-    have_apex = True
-except ImportError:
-    from utils import optimizer as uoptim
-    have_apex = False
 
 # amp
 import torch.cuda.amp as amp
@@ -234,19 +226,8 @@ def main(pargs):
         criterion = torch.jit.script(criterion)
 
     #select optimizer
-    optimizer = None
-    if pargs.optimizer == "Adam":
-        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-    elif pargs.optimizer == "AdamW":
-        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-    elif pargs.optimizer == "LAMB":
-        if have_apex:
-            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-        else:
-            optimizer = uoptim.Lamb(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay, clamp_value = torch.iinfo(torch.int32).max)
-    else:
-        raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
-    
+    optimizer = ph.get_optimizer(net, pargs)
+        
     # gradient scaler
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
     
@@ -255,12 +236,15 @@ def main(pargs):
     if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
         bucket_cap_mb = 110 if pargs.enable_amp else 220
 
-    ddp_net = DDP(net, device_ids=[device.index],
-                  output_device=device.index,
-                  find_unused_parameters=False,
-                  broadcast_buffers=False,
-                  bucket_cap_mb=bucket_cap_mb,
-                  gradient_as_bucket_view=False)
+    if comm_size > 1:
+        ddp_net = DDP(net, device_ids=[device.index],
+                      output_device=device.index,
+                      find_unused_parameters=False,
+                      broadcast_buffers=False,
+                      bucket_cap_mb=bucket_cap_mb,
+                      gradient_as_bucket_view=False)
+    else:
+        ddp_net = net
         
     #select scheduler
     if pargs.lr_schedule:
@@ -423,11 +407,18 @@ def main(pargs):
 
         # compile the model
         #ddp_handle = ddp_net.module
-        if pargs.enable_amp:
-            with amp.autocast(enabled = pargs.enable_amp):
-                ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
+        if comm_size > 1:
+            if pargs.enable_amp:
+                with amp.autocast(enabled = pargs.enable_amp):
+                    ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
+            else:
+                ddp_net.module = torch.jit.script(ddp_net.module)
         else:
-            ddp_net.module = torch.jit.script(ddp_net.module)
+            if pargs.enable_amp:
+                with amp.autocast(enabled = pargs.enable_amp):
+                    ddp_net = torch.jit.trace(ddp_net, train_example, check_trace = False)
+            else:
+                ddp_net = torch.jit.script(ddp_net)
 
         net_train = ddp_net
             
@@ -485,13 +476,115 @@ def main(pargs):
             for inputs, label, filename in train_loader:
 
                 torch.cuda.nvtx.range_push(f"step {step}")
-                step = train_step(pargs, comm_rank, comm_size,
-                                  device, step, epoch, 
-                                  net_train, criterion, 
-                                  optimizer, gscaler, scheduler,
-                                  inputs, label, filename, 
-                                  logger, have_wandb, viz)
+                if not pargs.enable_dali:
+                    torch.cuda.nvtx.range_push(f"copy_h2d")
+                    # send to device
+                    inputs = inputs.to(device)
+                    label = label.to(device)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+    
+                # to NHWC
+                if pargs.enable_nhwc:
+                    torch.cuda.nvtx.range_push(f"NHWC")
+                    N, H, W, C = (pargs.local_batch_size, 768, 1152, 16)
+                    inputs = torch.as_strided(inputs, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
+                    #inputs = inputs.contiguous(memory_format = torch.channels_last)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+    
+                # forward pass
+                if pargs.enable_jit:
+                    # JIT
+                    torch.cuda.nvtx.range_push(f"forward")
+                    outputs = net.forward(inputs)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+        
+                    torch.cuda.nvtx.range_push(f"loss")
+                    with amp.autocast(enabled = pargs.enable_amp):
+                        # to NCHW
+                        if pargs.enable_nhwc:
+                            outputs = outputs.contiguous(memory_format = torch.contiguous_format)
+                        loss = criterion(outputs, label)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+                else:
+                    # NO-JIT
+                    with amp.autocast(enabled = pargs.enable_amp):
+                        torch.cuda.nvtx.range_push(f"forward")
+                        outputs = net.forward(inputs)
+                        torch.cuda.synchronize()
+                        torch.cuda.nvtx.range_pop()
+            
+                        # to NCHW
+                        torch.cuda.nvtx.range_push(f"loss")
+                        if pargs.enable_nhwc:
+                            outputs = outputs.contiguous(memory_format = torch.contiguous_format)
+                        loss = criterion(outputs, label)
+                        torch.cuda.synchronize()
+                        torch.cuda.nvtx.range_pop()
+    
+                # Backprop
+                #optimizer.zero_grad(set_to_none = True)
+                torch.cuda.nvtx.range_push(f"backward")
+                optimizer.zero_grad()
+                gscaler.scale(loss).backward()
+                torch.cuda.synchronize()
                 torch.cuda.nvtx.range_pop()
+                
+                torch.cuda.nvtx.range_push(f"optimizer")
+                gscaler.step(optimizer)
+                gscaler.update()
+                torch.cuda.synchronize()
+                torch.cuda.nvtx.range_pop()
+    
+                # step counter
+                step += 1
+    
+                if pargs.lr_schedule:
+                    torch.cuda.nvtx.range_push(f"scheduler")
+                    current_lr = scheduler.get_last_lr()[0]
+                    scheduler.step()
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+                
+                # step range
+                torch.cuda.synchronize()
+                torch.cuda.nvtx.range_pop()
+                
+                #log if requested
+                if (step % pargs.logging_frequency == 0):
+    
+                    torch.cuda.nvtx.range_push(f"summary_stats")
+                    # allreduce for loss
+                    loss_avg = loss.detach()
+                    if dist.is_initialized():
+                        dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
+                    loss_avg_train = loss_avg.item() / float(comm_size)
+    
+                    # Compute score
+                    predictions = torch.max(outputs, 1)[1]
+                    iou = metric.compute_score_new(predictions, label, num_classes=3)
+                    iou_avg = iou.detach()
+                    if dist.is_initialized():
+                        dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
+                    iou_avg_train = iou_avg.item() / float(comm_size)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
+                    
+                    torch.cuda.nvtx.range_push(f"logging")
+                    # log values
+                    logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                    logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
+                    logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
+    
+                    if have_wandb and (comm_rank == 0):
+                        wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
+                        wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
+                        wandb.log({"learning_rate": current_lr}, step = step)
+                    torch.cuda.synchronize()
+                    torch.cuda.nvtx.range_pop()
             
                 # validation step if desired
                 if (step % pargs.validation_frequency == 0):

@@ -112,6 +112,11 @@ RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 #install torchsummary
 RUN pip install torchsummary
 
+#update apex
+RUN cd /opt && git clone https://github.com/NVIDIA/apex.git && cd apex && \
+    pip uninstall -y apex && \
+    pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+
 # group batch norm
 COPY sys/pyt-fused-layer-interface /opt/pyt-fused-layer-interface
 RUN cd /opt/pyt-fused-layer-interface && python setup.py install
