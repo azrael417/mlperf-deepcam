@@ -236,7 +236,7 @@ def main(pargs):
     ddp_net = DDP(net, device_ids=[device.index],
                   output_device=device.index,
                   find_unused_parameters=False,
-                  broadcast_buffers=False,
+                  broadcast_buffers=True,
                   bucket_cap_mb=bucket_cap_mb,
                   gradient_as_bucket_view=False)
         

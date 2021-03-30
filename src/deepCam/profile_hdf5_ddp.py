@@ -54,6 +54,7 @@ from driver import validate
 from utils import parser
 from utils import losses
 from utils import parsing_helpers as ph
+from utils import bn_stats_average as bnsa
 from data import cam_hdf5_dataset as cam
 from data import cam_numpy_dali_dataset as cam_dali
 from architecture import deeplab_xception
@@ -81,7 +82,7 @@ import torch.cuda.amp as amp
 from utils import comm
 
 # profiling
-import nvidia_dlprof_pytorch_nvtx
+#import nvidia_dlprof_pytorch_nvtx
 
 #main function
 def main(pargs):
@@ -199,6 +200,9 @@ def main(pargs):
                                           process_group = comm_local_group)
     net.to(device)
 
+    # stats averager:
+    bn_stats_average = bnsa.BatchNormStatsAverage(net)
+    
     #restart from checkpoint if desired
     if pargs.checkpoint:
         checkpoint = torch.load(pargs.checkpoint, map_location = device)
@@ -240,7 +244,7 @@ def main(pargs):
         ddp_net = DDP(net, device_ids=[device.index],
                       output_device=device.index,
                       find_unused_parameters=False,
-                      broadcast_buffers=False,
+                      broadcast_buffers=True,
                       bucket_cap_mb=bucket_cap_mb,
                       gradient_as_bucket_view=False)
     else:
@@ -626,7 +630,7 @@ def main(pargs):
 if __name__ == "__main__":
 
     # profiler annotations
-    nvidia_dlprof_pytorch_nvtx.init()
+    #nvidia_dlprof_pytorch_nvtx.init()
 
     #arguments
     pargs = parser.parse_arguments()

@@ -34,14 +34,14 @@ from typing import List
 from groupbn.batch_norm import BatchNorm2d_NHWC
 
 
-#class GBN(nn.Module):
-#    def __init__(self, num_features, fuse_relu=False, process_group=None):
-#        super(GBN, self).__init__()
-#
-#        self.bn = nn.BatchNorm2d(num_features)
-#
-#    def forward(self, x):
-#        return self.bn(x)
+class LBN(nn.Module):
+    def __init__(self, num_features):
+        super(LBN, self).__init__()
+
+        self.bn = nn.BatchNorm2d(num_features)
+
+    def forward(self, x):
+        return self.bn(x)
 
 
 class GBN(nn.Module):
@@ -63,6 +63,14 @@ class GBN(nn.Module):
             if dtype == torch.float32:
                 x = x.float()
         return x
+
+
+def get_batchnorm(num_features, fuse_relu=False, process_group=None):
+    if process_group is not None:
+        return GBN(num_features, fuse_relu=False, process_group=None)
+    else:
+        return LBN(num_features)
+    
 
     
 class SeparableConv2d(nn.Module):
@@ -110,7 +118,7 @@ class Block(nn.Module):
         
         if planes != inplanes or stride != 1:
             self.skip = nn.Conv2d(inplanes, planes, 1, stride=stride, bias=False)
-            self.skipbn = GBN(planes, fuse_relu=False, process_group=process_group)
+            self.skipbn = get_batchnorm(planes, fuse_relu=False, process_group=process_group)
         else:
             self.skip = None
 
@@ -121,18 +129,18 @@ class Block(nn.Module):
         if grow_first:
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(inplanes, planes, 3, stride=1, dilation=dilation))
-            rep.append(GBN(planes, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(planes, fuse_relu=False, process_group=process_group))
             filters = planes
 
         for i in range(reps - 1):
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(filters, filters, 3, stride=1, dilation=dilation))
-            rep.append(GBN(filters, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(filters, fuse_relu=False, process_group=process_group))
 
         if not grow_first:
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(inplanes, planes, 3, stride=1, dilation=dilation))
-            rep.append(GBN(planes, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(planes, fuse_relu=False, process_group=process_group))
 
         if not start_with_relu:
             rep = rep[1:]
@@ -182,10 +190,10 @@ class Xception(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         
         self.conv1 = nn.Conv2d(inplanes, 32, 3, stride=2, padding=1, bias=False)
-        self.bn1 = GBN(32, fuse_relu=False, process_group=process_group)
+        self.bn1 = get_batchnorm(32, fuse_relu=False, process_group=process_group)
 
         self.conv2 = nn.Conv2d(32, 64, 3, stride=1, padding=1, bias=False)
-        self.bn2 = GBN(64, fuse_relu=False, process_group=process_group)
+        self.bn2 = get_batchnorm(64, fuse_relu=False, process_group=process_group)
 
         self.block1 = Block(64, 128, reps=2, stride=2, start_with_relu=False, process_group=process_group)
         self.block2 = Block(128, 256, reps=2, stride=2, start_with_relu=True, grow_first=True, process_group=process_group)
@@ -217,13 +225,13 @@ class Xception(nn.Module):
                              start_with_relu=True, grow_first=False, is_last=True, process_group=process_group)
         
         self.conv3 = SeparableConv2d_same(1024, 1536, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn3 = GBN(1536, fuse_relu=False, process_group=process_group)
+        self.bn3 = get_batchnorm(1536, fuse_relu=False, process_group=process_group)
 
         self.conv4 = SeparableConv2d_same(1536, 1536, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn4 = GBN(1536, fuse_relu=False, process_group=process_group)
+        self.bn4 = get_batchnorm(1536, fuse_relu=False, process_group=process_group)
 
         self.conv5 = SeparableConv2d_same(1536, 2048, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn5 = GBN(2048, fuse_relu=False, process_group=process_group)
+        self.bn5 = get_batchnorm(2048, fuse_relu=False, process_group=process_group)
 
         # Init weights
         self.__init_weight()
@@ -331,7 +339,7 @@ class ASPP_module(nn.Module):
         self.atrous_convolution = nn.Conv2d(inplanes, planes, kernel_size=kernel_size,
                                             stride=1, padding=padding, dilation=rate, bias=False)
                                             
-        self.bn = GBN(planes, fuse_relu=False, process_group=process_group)
+        self.bn = get_batchnorm(planes, fuse_relu=False, process_group=process_group)
         self.relu = nn.ReLU()
 
         self.__init_weight()
@@ -360,22 +368,22 @@ class DeconvUpsampler(nn.Module):
 
         # deconvs
         self.deconv1 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     GBN(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
                                      nn.ReLU(),
                                      nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     GBN(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
                                      nn.ReLU())
             
         self.conv1 = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                   GBN(256, fuse_relu=False, process_group=process_group),
+                                   get_batchnorm(256, fuse_relu=False, process_group=process_group),
                                    nn.ReLU(),
                                    nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                   GBN(256, fuse_relu=False, process_group=process_group),
+                                   get_batchnorm(256, fuse_relu=False, process_group=process_group),
                                    nn.ReLU(),
                                    nn.Conv2d(256, 256, kernel_size=1, stride=1))
             
         self.deconv2 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     GBN(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
                                      nn.ReLU())
 
 	    #no bias or BN on the last deconv
@@ -462,35 +470,30 @@ class DeepLabv3_plus(nn.Module):
         self.global_avg_pool = GlobalAveragePool(2048, 256)
 
         self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
-        self.bn1 = GBN(256, fuse_relu=False, process_group=process_group)
+        self.bn1 = get_batchnorm(256, fuse_relu=False, process_group=process_group)
 
         # adopt [1x1, 48] for channel reduction.
         self.conv2 = nn.Conv2d(128, 48, 1, bias=False)
-        self.bn2 = GBN(48, fuse_relu=False, process_group=process_group)
+        self.bn2 = get_batchnorm(48, fuse_relu=False, process_group=process_group)
 
         # upsampling
         #self.upsample = InterpolationUpsampler(n_classes)
         self.upsample = DeconvUpsampler(n_classes, process_group = process_group)
 
     def forward(self, input):
-        torch.cuda.nvtx.range_push("xception")
         x, low_level_features = self.xception_features(input)
-        torch.cuda.nvtx.range_pop()
 
         # ASPP step
-        torch.cuda.nvtx.range_push("aspp")
         x1 = self.aspp1(x)
         x2 = self.aspp2(x)
         x3 = self.aspp3(x)
         x4 = self.aspp4(x)
         x5 = self.global_avg_pool(x)
-        torch.cuda.nvtx.range_pop()
 
         # this is very expensive in BW
         #x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
 
         # this is the same and much cheaper
-        torch.cuda.nvtx.range_push("feature_extraction")
         tiled = (1, 1, *(x4.size()[2:]))
         x5 = torch.tile(x5, tiled)
         
@@ -504,12 +507,9 @@ class DeepLabv3_plus(nn.Module):
         low_level_features = self.conv2(low_level_features)
         low_level_features = self.bn2(low_level_features)
         low_level_features = self.relu(low_level_features)
-        torch.cuda.nvtx.range_pop()
 
         # decoder / upsampling logic
-        torch.cuda.nvtx.range_push("decode")
         x = self.upsample(x, low_level_features, input.size())
-        torch.cuda.nvtx.range_pop()
 
         return x
 

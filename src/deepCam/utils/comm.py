@@ -122,7 +122,7 @@ def init(method, batchnorm_group_size=1):
     my_rank = get_rank()
     world_size = get_size()
     local_group = None
-    if world_size > 1 and batchnorm_group_size > 0:
+    if world_size > 1 and batchnorm_group_size > 1:
         for i in range(num_groups):
             start = i * batchnorm_group_size
             end = start + batchnorm_group_size
