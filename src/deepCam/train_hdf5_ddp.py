@@ -203,7 +203,19 @@ def main(pargs):
                                           rank = comm_rank,
                                           process_group = comm_local_group)
     net.to(device)
-
+    
+    #restart from checkpoint if desired
+    if pargs.checkpoint:
+        checkpoint = torch.load(pargs.checkpoint, map_location = device)
+        start_step = checkpoint['step']
+        start_epoch = checkpoint['epoch']
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        ddp_net.load_state_dict(checkpoint['model'])
+    else:
+        start_step = 0
+        start_epoch = 0
+    
+    # convert to NHWC
     if pargs.enable_nhwc:
         net = net.to(memory_format = torch.channels_last)
 
@@ -241,23 +253,11 @@ def main(pargs):
         bucket_cap_mb = 110 if pargs.enable_amp else 220
 
     ddp_net = DDP(net, device_ids=[device.index],
-                  output_device=[device.index],
+                  output_device=device.index,
                   find_unused_parameters=False,
+                  broadcast_buffers=False,
                   bucket_cap_mb=bucket_cap_mb,
                   gradient_as_bucket_view=False)
-
-    #restart from checkpoint if desired
-    #if (comm_rank == 0) and (pargs.checkpoint):
-    #load it on all ranks for now
-    if pargs.checkpoint:
-        checkpoint = torch.load(pargs.checkpoint, map_location = device)
-        start_step = checkpoint['step']
-        start_epoch = checkpoint['epoch']
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        ddp_net.load_state_dict(checkpoint['model'])
-    else:
-        start_step = 0
-        start_epoch = 0
         
     #select scheduler
     if pargs.lr_schedule:
