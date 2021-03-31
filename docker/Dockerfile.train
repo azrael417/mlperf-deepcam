@@ -19,8 +19,9 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:master-py3-devel
-FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.03-py3-devel
+FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:master-py3-devel
+#FROM gitlab-master.nvidia.com:5005/dl/dgx/pytorch:21.03-py3-devel
+#FROM gitlab-master.nvidia.com/dl/dgx/pytorch:cuda_graphs..21.04_v1-py3.2143868-devel
 
 ## install gds
 COPY sys/gpudirect-storage-local-repo-ubuntu2004-cuda-11.2-0.9.1_0.9.1-1_amd64.deb /tmp/

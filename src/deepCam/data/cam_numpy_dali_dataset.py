@@ -224,11 +224,12 @@ class CamDaliDataloader(object):
             self.init_iterator()
         
 
-    def init_iterator(self):
-        self.iterator = DALIGenericIterator([self.pipeline], ['data', 'label'], auto_reset = True,
-                                            reader_name = "data",
-                                            last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP)
-        self.epoch_size = self.pipeline.epoch_size()
+    #def init_iterator(self):
+    #    self.iterator = DALIGenericIterator([self.pipeline], ['data', 'label'], auto_reset = True,
+    #                                        reader_name = "data",
+    #                                        last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP,
+    #                                        prepare_first_batch = False)
+    #    self.epoch_size = self.pipeline.epoch_size()
         
         
     def __init__(self, root_dir, prefix_data, prefix_label, statsfile,
@@ -262,6 +263,13 @@ class CamDaliDataloader(object):
         # init files
         self.init_files(root_dir, prefix_data, prefix_label,
                         statsfile, file_list_data, file_list_label)
+        
+        self.iterator = DALIGenericIterator([self.pipeline], ['data', 'label'], auto_reset = True,
+                                            reader_name = "data",
+                                            last_batch_policy = LastBatchPolicy.PARTIAL if self.is_validation else LastBatchPolicy.DROP,
+                                            prepare_first_batch = False)
+
+        self.epoch_size = self.pipeline.epoch_size()
         
 
     @property

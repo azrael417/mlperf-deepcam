@@ -54,6 +54,7 @@ from driver import train_step, validate
 from utils import parser
 from utils import losses
 from utils import parsing_helpers as ph
+from utils import cuda_graph as cg
 from data import cam_hdf5_dataset as cam
 from data import cam_numpy_dali_dataset as cam_dali
 from architecture import deeplab_xception
@@ -376,20 +377,23 @@ def main(pargs):
     # print parameters
     if comm_rank == 0:
         print("Total number of elements:", sum(p.numel() for p in net.parameters() if p.requires_grad))
-
+        
+    # get input shapes for the upcoming model preprocessing
+    # input_shape:
+    if pargs.enable_dali:
+        tshapes = train_loader.shapes[0]
+    else:
+        tshapes = train_loader.dataset.shapes[0]
+    input_shape = [tshapes[2], tshapes[0], tshapes[1]]
+        
     # jit stuff
     if pargs.enable_jit:
         # wait for everybody
         dist.barrier()
-        # input_shape:
-        if pargs.enable_dali:
-            tshapes = train_loader.shapes[0]
-        else:
-            tshapes = train_loader.dataset.shapes[0]
-        input_shape = [tshapes[2], tshapes[0], tshapes[1]]
+        
         # example input
-        train_example = torch.randn( (pargs.local_batch_size, *input_shape) ).to(device)
-        validation_example = torch.randn( (1, *input_shape) ).to(device)
+        train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
+        validation_example = torch.ones( (1, *input_shape), device=device)
 
         # backup old network
         net_validate = net
@@ -412,7 +416,23 @@ def main(pargs):
     else:
         net_validate = ddp_net
         net_train = ddp_net
+    
+    # graph capture if requested
+    if pargs.enable_graph:
+        # wait for everybody
+        dist.barrier()
+
+        # example input
+        train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
+
+        # NHWC
+        if pargs.enable_nhwc:
+            train_example = train_example.contiguous(memory_format = torch.channels_last)
         
+        # capture graph
+        #net_train.module = cg.capture_graph(net_train.module, tuple([train_example]), warmup_iters=5)
+        net_train.module.xception_features = cg.capture_graph(net_train.module.xception_features, tuple([train_example]), warmup_iters=5)
+    
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
     if pargs.max_validation_steps is not None:
@@ -444,10 +464,10 @@ def main(pargs):
     logger.log_end(key = "init_stop", sync = True)
     logger.log_start(key = "run_start", sync = True)
 
-    # start prefetching
-    if pargs.enable_dali:
-        train_loader.init_iterator()
-        validation_loader.init_iterator()
+    ## start prefetching
+    #if pargs.enable_dali:
+    #    train_loader.init_iterator()
+    #    validation_loader.init_iterator()
 
     # training loop
     while True:
