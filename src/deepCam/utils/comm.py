@@ -115,6 +115,10 @@ def init(method, batchnorm_group_size=1):
         
     else:
         raise NotImplementedError()
+        
+    # make sure to call a barrier here in order for sharp to use the default comm:
+    if dist.is_initialized():
+        dist.barrier()
 
     # create local group
     num_groups = get_size() // batchnorm_group_size
