@@ -42,12 +42,6 @@ import utils.mlperf_log_utils as mll
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
-#from torch.utils.data import Dataset
-#from torch.utils.data import DataLoader
-#from torch.utils.data import DistributedSampler
-
-# utils
-from torchsummary import summary
 
 # Custom
 from driver import train_step, validate
@@ -274,10 +268,7 @@ def main(pargs):
     # get input shapes for the upcoming model preprocessing
     # input_shape:
     tshape, _ = get_datashapes(root_dir, pargs)
-    if pargs.enable_nhwc:
-        input_shape = tuple([tshape[2], tshape[0], tshape[1]])
-    else:
-        input_shape = tshape
+    input_shape = tuple([tshape[2], tshape[0], tshape[1]])
         
     # jit stuff
     if pargs.enable_jit:
@@ -323,8 +314,8 @@ def main(pargs):
             train_example = train_example.contiguous(memory_format = torch.channels_last)
         
         # capture graph
-        #net_train.module = cg.capture_graph(net_train.module, tuple([train_example]), warmup_iters=5)
-        net_train.module.xception_features = cg.capture_graph(net_train.module.xception_features, tuple([train_example]), warmup_iters=5)
+        net_train.module = cg.capture_graph(net_train.module, tuple([train_example]), warmup_iters=5)
+        #net_train.module.xception_features = cg.capture_graph(net_train.module.xception_features, tuple([train_example]), warmup_iters=5)
     
     # Set up the data feeder
     train_loader, train_size, validation_loader, validation_size = get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank)
