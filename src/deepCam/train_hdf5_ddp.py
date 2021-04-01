@@ -221,18 +221,6 @@ def main(pargs):
     
     # gradient scaler
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
-    
-    #make model distributed
-    bucket_cap_mb = 25
-    if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
-        bucket_cap_mb = 110 if pargs.enable_amp else 220
-
-    ddp_net = DDP(net, device_ids=[device.index],
-                  output_device=device.index,
-                  find_unused_parameters=False,
-                  broadcast_buffers=False,
-                  bucket_cap_mb=bucket_cap_mb,
-                  gradient_as_bucket_view=False)
         
     #select scheduler
     if pargs.lr_schedule:
@@ -269,7 +257,19 @@ def main(pargs):
     # input_shape:
     tshape, _ = get_datashapes(root_dir, pargs)
     input_shape = tuple([tshape[2], tshape[0], tshape[1]])
-        
+    
+    #distributed model parameters
+    bucket_cap_mb = 25
+    if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
+        bucket_cap_mb = 110 if pargs.enable_amp else 220
+    
+    ddp_net = DDP(net, device_ids=[device.index],
+                  output_device=device.index,
+                  find_unused_parameters=False,
+                  broadcast_buffers=False,
+                  bucket_cap_mb=bucket_cap_mb,
+                  gradient_as_bucket_view=False)
+    
     # jit stuff
     if pargs.enable_jit:
         # wait for everybody
@@ -288,7 +288,6 @@ def main(pargs):
             validation_example = validation_example.contiguous(memory_format = torch.channels_last)
 
         # compile the model
-        #ddp_handle = ddp_net.module
         if pargs.enable_amp:
             with amp.autocast(enabled = pargs.enable_amp):
                 ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
@@ -296,9 +295,8 @@ def main(pargs):
             ddp_net.module = torch.jit.script(ddp_net.module)
 
         net_train = ddp_net
-            
     else:
-        net_validate = ddp_net
+        net_validate = net
         net_train = ddp_net
     
     # graph capture if requested
@@ -307,16 +305,18 @@ def main(pargs):
         dist.barrier()
 
         # example input
-        train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
+        train_example = [torch.ones( (pargs.local_batch_size, *input_shape), dtype=torch.float32, device=device)]
 
         # NHWC
         if pargs.enable_nhwc:
-            train_example = train_example.contiguous(memory_format = torch.channels_last)
+            train_example = [x.contiguous(memory_format = torch.channels_last) for x in train_example]
         
         # capture graph
-        net_train.module = cg.capture_graph(net_train.module, tuple([train_example]), warmup_iters=5)
-        #net_train.module.xception_features = cg.capture_graph(net_train.module.xception_features, tuple([train_example]), warmup_iters=5)
-    
+        net_train.module = cg.capture_graph(net_train.module, 
+                                            tuple(t.clone() for t in train_example), 
+                                            warmup_iters = 10,
+                                            use_amp = pargs.enable_amp and not pargs.enable_jit)
+        
     # Set up the data feeder
     train_loader, train_size, validation_loader, validation_size = get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank)
     

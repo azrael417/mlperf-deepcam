@@ -1,4 +1,5 @@
 import torch
+import torch.cuda.amp as amp
 import types
 from itertools import chain
 import argparse
@@ -23,7 +24,8 @@ def capture_graph(func_or_module,
           sample_args,
           graph_stream=None,
           warmup_iters=2,
-          warmup_only=False):
+          warmup_only=False,
+          use_amp=False):
 
     assert isinstance(sample_args, tuple)
     
@@ -88,7 +90,8 @@ def capture_graph(func_or_module,
         # Capture forward pass
         fwd_graph = torch.cuda._Graph()
         fwd_graph.capture_begin()
-        outputs  = func_or_module(*sample_args)
+        with amp.autocast(enabled = use_amp):
+            outputs  = func_or_module(*sample_args)
         fwd_graph.capture_end()
 
         outputs_was_tensor = isinstance(outputs, torch.Tensor)
@@ -100,16 +103,16 @@ def capture_graph(func_or_module,
         needed_incoming_grads = tuple(b for b in buffer_incoming_grads if b is not None)
 
         # Capture gradient creation
+        torch.cuda.nvtx.range_push("capturing autograd.grad")
         bwd_graph = torch.cuda._Graph()
         bwd_graph.capture_begin(pool=fwd_graph.pool())
-        torch.cuda.nvtx.range_push("capturing autograd.grad")
         grad_inputs = torch.autograd.grad(outputs_require_grad,
                                           args_require_grad,
                                           needed_incoming_grads,
                                           only_inputs=True,
                                           allow_unused=False)
-        torch.cuda.nvtx.range_pop()
         bwd_graph.capture_end()
+        torch.cuda.nvtx.range_pop()
 
         buffer_inputs = tuple(i.detach() for i in functional_args)
         buffer_outputs = tuple(o.detach().requires_grad_(o.requires_grad) for o in outputs)

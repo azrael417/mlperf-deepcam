@@ -389,7 +389,7 @@ class DeconvUpsampler(nn.Module):
 	    #no bias or BN on the last deconv
         self.last_deconv = nn.Sequential(nn.ConvTranspose2d(256, n_output, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False))
 
-    def forward(self, x, low_level_features, input_size: List[int]):
+    def forward(self, x, low_level_features):
         x = self.deconv1(x)
         x = torch.cat((x, low_level_features), dim=1)
         x = self.conv1(x)
@@ -507,9 +507,9 @@ class DeepLabv3_plus(nn.Module):
         low_level_features = self.conv2(low_level_features)
         low_level_features = self.bn2(low_level_features)
         low_level_features = self.relu(low_level_features)
-
+        
         # decoder / upsampling logic
-        x = self.upsample(x, low_level_features, input.size())
+        x = self.upsample(x, low_level_features)
 
         return x
 
