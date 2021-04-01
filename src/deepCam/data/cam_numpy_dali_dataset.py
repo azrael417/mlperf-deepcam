@@ -9,6 +9,17 @@ import nvidia.dali.ops as ops
 import nvidia.dali.types as types
 from nvidia.dali.plugin.pytorch import DALIGenericIterator, LastBatchPolicy
 
+
+def peek_shapes_numpy(data_dir):
+    data_files = glob.iglob(os.path.join(data_dir, "data-*.npy"))
+    data_shape = np.load(next(data_files)).shape
+    
+    label_files = glob.iglob(os.path.join(data_dir, "label-*.npy"))
+    label_shape = np.load(next(label_files)).shape
+    
+    return data_shape, label_shape
+
+
 class NumpyReadPipeline(Pipeline):
     def __init__(self, file_root, data_files, label_files, batch_size, mean, stddev, num_threads,
                  device, io_device, num_shards=1, shard_id=0, shuffle=False, stick_to_shard=False,

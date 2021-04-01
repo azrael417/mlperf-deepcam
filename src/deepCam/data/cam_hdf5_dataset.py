@@ -32,6 +32,15 @@ from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 
 
+def peek_shapes_hdf5(data_dir):
+    files = glob.iglob(os.path.join(data_dir, "*.h5"))
+    with h5.File(next(files), "r") as fin:
+        data_shape = fin["climate"]["data"].shape
+        label_shape = fin["climate"]["label_0"].shape
+        
+    return data_shape, label_shape
+
+
 #dataset class
 class CamDataset(Dataset):
   

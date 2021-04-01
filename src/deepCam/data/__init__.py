@@ -1,12 +1,22 @@
 import os
+from glob import glob
 import torch
 
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import DistributedSampler
 
-from cam_hdf5_dataset import CamDataset
-from cam_numpy_dali_dataset import CamDaliDataloader
+from .cam_hdf5_dataset import CamDataset, peek_shapes_hdf5
+from .cam_numpy_dali_dataset import CamDaliDataloader, peek_shapes_numpy
+
+# helper function for determining the data shapes
+def get_datashapes(root_dir, pargs):
+    
+    if not pargs.enable_dali:
+        return peek_shapes_hdf5(os.path.join(root_dir, "train"))
+    else:
+        return peek_shapes_numpy(os.path.join(root_dir, "train"))
+    
 
 # helper function to de-clutter the main training script
 def get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank):

@@ -111,7 +111,7 @@ RUN pip install "git+https://github.com/mlperf/logging.git"
 RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
 #install torchsummary
-RUN pip install torchsummary
+#RUN pip install torchsummary
 
 #update apex
 RUN cd /opt && git clone https://github.com/NVIDIA/apex.git && cd apex && \

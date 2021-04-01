@@ -26,7 +26,7 @@ cd ..
 
 #training container
 docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:syncbn -f docker/Dockerfile.train .
-docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:syncbn
+#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:syncbn
 
 #docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp -f docker/Dockerfile.sharp .
 #docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp

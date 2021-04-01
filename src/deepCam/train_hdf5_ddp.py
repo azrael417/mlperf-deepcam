@@ -55,9 +55,7 @@ from utils import parser
 from utils import losses
 from utils import parsing_helpers as ph
 from utils import cuda_graph as cg
-#from data import cam_hdf5_dataset as cam
-#from data import cam_numpy_dali_dataset as cam_dali
-from data import get_dataloaders
+from data import get_dataloaders, get_datashapes
 from architecture import deeplab_xception
 
 #warmup scheduler
@@ -267,108 +265,6 @@ def main(pargs):
     #unpack the bcasted tensor
     start_step = int(steptens.cpu().numpy()[0])
     start_epoch = int(steptens.cpu().numpy()[1])
-
-    # Set up the data feeder
-    train_loader, train_size, validation_loader, validation_size = get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank)
-    
-    #if not pargs.enable_dali:
-    #    train_dir = os.path.join(root_dir, "train")
-    #    train_set = cam.CamDataset(train_dir, 
-    #                               statsfile = os.path.join(root_dir, 'stats.h5'),
-    #                               channels = pargs.channels,
-    #                               allow_uneven_distribution = False,
-    #                               shuffle = True, 
-    #                               preprocess = True,
-    #                               transpose = not pargs.enable_nhwc,
-    #                               augmentations = pargs.data_augmentations,
-    #                               comm_size = 1,
-    #                               comm_rank = 0)
-    #
-    #    distributed_train_sampler = DistributedSampler(train_set,
-    #                                                   num_replicas = comm_size,
-    #                                                   rank = comm_rank,
-    #                                                   shuffle = True,
-    #                                                   drop_last = True)
-    #
-    #    train_loader = DataLoader(train_set,
-    #                              pargs.local_batch_size,
-    #                              num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
-    #                              sampler = distributed_train_sampler,
-    #                              pin_memory = True,
-    #                              drop_last = True)
-    #
-    #    train_size = train_set.global_size
-    #
-    #else:
-    #    train_dir = os.path.join(root_dir, "train")
-    #    train_loader = cam_dali.CamDaliDataloader(train_dir,
-    #                                              'data-*.npy',
-    #                                              'label-*.npy',
-    #                                              os.path.join(root_dir, 'stats.h5'),
-    #                                              pargs.local_batch_size,
-    #                                              file_list_data = "train_files_data.lst",
-    #                                              file_list_label = "train_files_label.lst",
-    #                                              num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
-    #                                              device = device,
-    #                                              num_shards = comm_size,
-    #                                              shard_id = comm_rank,
-    #                                              stick_to_shard = False,
-    #                                              shuffle = True,
-    #                                              is_validation = False,
-    #                                              lazy_init = True,
-    #                                              transpose = not pargs.enable_nhwc,
-    #                                              augmentations = pargs.data_augmentations,
-    #                                              read_gpu = False,
-    #                                              use_mmap = False,
-    #                                              seed = seed)
-    #    train_size = train_loader.global_size
-    #
-    ## validation: we only want to shuffle the set if we are cutting off validation after a certain number of steps
-    #if not pargs.enable_dali:
-    #    validation_dir = os.path.join(root_dir, "validation")
-    #    validation_set = cam.CamDataset(validation_dir, 
-    #                                    statsfile = os.path.join(root_dir, 'stats.h5'),
-    #                                    channels = pargs.channels,
-    #                                    allow_uneven_distribution = True,
-    #                                    shuffle = (pargs.max_validation_steps is not None),
-    #                                    preprocess = True,
-    #                                    transpose = not pargs.enable_nhwc,
-    #                                    augmentations = [],
-    #                                    comm_size = comm_size,
-    #                                    comm_rank = comm_rank)
-    #
-    #    # use batch size = 1 here to make sure that we do not drop a sample
-    #    validation_loader = DataLoader(validation_set,
-    #                                   1,
-    #                                   num_workers = min([pargs.max_inter_threads, pargs.local_batch_size]),
-    #                                   pin_memory = True,
-    #                                   drop_last = False)
-    #
-    #    validation_size = validation_set.global_size
-    #    
-    #else:
-    #    validation_dir = os.path.join(root_dir, "validation")
-    #    validation_loader = cam_dali.CamDaliDataloader(validation_dir,
-    #                                                   'data-*.npy',
-    #                                                   'label-*.npy',
-    #                                                   os.path.join(root_dir, 'stats.h5'),
-    #                                                   1,
-    #                                                   file_list_data = "validation_files_data.lst",
-    #                                                   file_list_label = "validation_files_label.lst",
-    #                                                   num_threads = min([pargs.max_inter_threads, pargs.local_batch_size]),
-    #                                                   device = device,
-    #                                                   num_shards = comm_size,
-    #                                                   shard_id = comm_rank,
-    #                                                   stick_to_shard = True,
-    #                                                   shuffle = True,
-    #                                                   is_validation = True,
-    #                                                   lazy_init = True,
-    #                                                   transpose = not pargs.enable_nhwc,
-    #                                                   augmentations = [],
-    #                                                   read_gpu = False,
-    #                                                   use_mmap = False,
-    #                                                   seed = seed)
-    #    validation_size = validation_loader.global_size
     
     # print parameters
     if comm_rank == 0:
@@ -377,11 +273,11 @@ def main(pargs):
         
     # get input shapes for the upcoming model preprocessing
     # input_shape:
-    if pargs.enable_dali:
-        tshapes = train_loader.shapes[0]
+    tshape, _ = get_datashapes(root_dir, pargs)
+    if pargs.enable_nhwc:
+        input_shape = tuple([tshape[2], tshape[0], tshape[1]])
     else:
-        tshapes = train_loader.dataset.shapes[0]
-    input_shape = [tshapes[2], tshapes[0], tshapes[1]]
+        input_shape = tshape
         
     # jit stuff
     if pargs.enable_jit:
@@ -429,6 +325,9 @@ def main(pargs):
         # capture graph
         #net_train.module = cg.capture_graph(net_train.module, tuple([train_example]), warmup_iters=5)
         net_train.module.xception_features = cg.capture_graph(net_train.module.xception_features, tuple([train_example]), warmup_iters=5)
+    
+    # Set up the data feeder
+    train_loader, train_size, validation_loader, validation_size = get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank)
     
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
