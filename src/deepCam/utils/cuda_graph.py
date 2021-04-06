@@ -49,9 +49,6 @@ def capture_graph(func_or_module,
     ambient_stream = torch.cuda.current_stream()
     stream.wait_stream(ambient_stream)
 
-    # brute force device sync
-    #torch.cuda.synchronize()
-
     # Most of the spaghetti here comes from handling args that may not require grad.
     with torch.cuda.stream(stream):
         # warmup iters before capture
@@ -144,7 +141,6 @@ def capture_graph(func_or_module,
                 func_or_module.train()
 
     ambient_stream.wait_stream(stream)
-    #torch.cuda.synchronize()
 
     class Graphed(torch.autograd.Function):
         @staticmethod
@@ -155,7 +151,7 @@ def capture_graph(func_or_module,
                         if i.data_ptr() != arg.data_ptr():
                             i.copy_(arg)
                 fwd_graph.replay()
-                return buffer_outputs
+                return tuple(b.clone().requires_grad_() for b in buffer_outputs)
             else:  # eval
                 with torch.no_grad():
                     if capture_eval:
@@ -164,7 +160,7 @@ def capture_graph(func_or_module,
                             if i.data_ptr() != arg.data_ptr():
                                 i.copy_(arg)
                         eval_graph.replay()
-                        return eval_outputs
+                        return tuple(b.clone().requires_grad_() for b in eval_outputs)
                     else:  # execute eval eagerly
                         outputs = func_or_module.forward_eager(*inputs[0:len(sample_args)])
                         if not isinstance(outputs, tuple):
