@@ -10,7 +10,7 @@ from .cam_hdf5_dataset import CamDataset, peek_shapes_hdf5
 from .cam_numpy_dali_dataset import CamDaliDataloader, peek_shapes_numpy
 
 # helper function for determining the data shapes
-def get_datashapes(root_dir, pargs):
+def get_datashapes(pargs, root_dir):
     
     if not pargs.enable_dali:
         return peek_shapes_hdf5(os.path.join(root_dir, "train"))
@@ -19,7 +19,7 @@ def get_datashapes(root_dir, pargs):
     
 
 # helper function to de-clutter the main training script
-def get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank):
+def get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank):
     
     if not pargs.enable_dali:
         train_dir = os.path.join(root_dir, "train")

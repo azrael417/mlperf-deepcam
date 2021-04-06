@@ -1,9 +1,6 @@
 import torch
 import torch.cuda.amp as amp
 import types
-from itertools import chain
-import argparse
-import os
 
 # questions:
 # is a custom autograd function or graphing around a backward call better?
@@ -19,7 +16,6 @@ import os
 # Any temporaries created in func_or_module must not be used
 # outside func_or_module unless they are among func_or_module's
 # explicit return values.
-
 def capture_graph(func_or_module,
           sample_args,
           graph_stream=None,
@@ -63,10 +59,11 @@ def capture_graph(func_or_module,
             # Warmup iters should warm up the same memory pool capture will use.  If they don't,
             # and we use the capture pool for the first time during capture, we'll almost
             # certainly capture some cudaMallocs.
-            outputs  = func_or_module(*sample_args)
+            with amp.autocast(enabled = use_amp):
+                outputs  = func_or_module(*sample_args)
 
-            outputs_was_tensor = isinstance(outputs, torch.Tensor)
-            outputs = (outputs,) if outputs_was_tensor else outputs
+                outputs_was_tensor = isinstance(outputs, torch.Tensor)
+                outputs = (outputs,) if outputs_was_tensor else outputs
 
             outputs_require_grad = tuple(o for o in outputs if o.requires_grad)
             args_require_grad = tuple(i for i in functional_args if i.requires_grad)

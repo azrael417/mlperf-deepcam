@@ -50,7 +50,7 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, last_step = -1):
         raise ValueError("Error, scheduler type {} not supported.".format(scheduler_arg["type"]))
 
 
-def get_optimizer(net, pargs):
+def get_optimizer(pargs, net):
     optimizer = None
     if pargs.optimizer == "Adam":
         optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)

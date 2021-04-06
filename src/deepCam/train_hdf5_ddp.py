@@ -47,8 +47,8 @@ from torch.autograd import Variable
 from driver import train_step, validate
 from utils import parser
 from utils import losses
-from utils import parsing_helpers as ph
-from utils import cuda_graph as cg
+from utils import optimizer_helpers as oh
+from utils import graph_helpers as gh
 from data import get_dataloaders, get_datashapes
 from architecture import deeplab_xception
 
@@ -196,7 +196,7 @@ def main(pargs):
         start_step = checkpoint['step']
         start_epoch = checkpoint['epoch']
         optimizer.load_state_dict(checkpoint['optimizer'])
-        ddp_net.load_state_dict(checkpoint['model'])
+        net.load_state_dict(checkpoint['model'])
     else:
         start_step = 0
         start_epoch = 0
@@ -217,14 +217,14 @@ def main(pargs):
         criterion = torch.jit.script(criterion)
 
     #select optimizer
-    optimizer = ph.get_optimizer(net, pargs)
+    optimizer = oh.get_optimizer(pargs, net)
     
     # gradient scaler
     gscaler = amp.GradScaler(enabled = pargs.enable_amp)
         
     #select scheduler
     if pargs.lr_schedule:
-        scheduler_after = ph.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
+        scheduler_after = oh.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
 
         # LR warmup
         if pargs.lr_warmup_steps > 0:
@@ -255,7 +255,7 @@ def main(pargs):
         
     # get input shapes for the upcoming model preprocessing
     # input_shape:
-    tshape, _ = get_datashapes(root_dir, pargs)
+    tshape, _ = get_datashapes(pargs, root_dir)
     input_shape = tuple([tshape[2], tshape[0], tshape[1]])
     
     #distributed model parameters
@@ -263,17 +263,21 @@ def main(pargs):
     if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
         bucket_cap_mb = 110 if pargs.enable_amp else 220
     
-    ddp_net = DDP(net, device_ids=[device.index],
-                  output_device=device.index,
-                  find_unused_parameters=False,
-                  broadcast_buffers=False,
-                  bucket_cap_mb=bucket_cap_mb,
-                  gradient_as_bucket_view=False)
+    # get stream, relevant for graph capture
+    scaffolding_stream = torch.cuda.current_stream() if not pargs.enable_graph else torch.cuda.Stream()
+    
+    with torch.cuda.stream(scaffolding_stream):
+        ddp_net = DDP(net, device_ids=[device.index],
+                      output_device=device.index,
+                      find_unused_parameters=False,
+                      broadcast_buffers=False,
+                      bucket_cap_mb=bucket_cap_mb,
+                      gradient_as_bucket_view=False)
     
     # jit stuff
     if pargs.enable_jit:
-        # wait for everybody
-        dist.barrier()
+        # sync the device
+        scaffolding_stream.synchronize()
         
         # example input
         train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
@@ -296,7 +300,7 @@ def main(pargs):
 
         net_train = ddp_net
     else:
-        net_validate = net
+        net_validate = ddp_net
         net_train = ddp_net
     
     # graph capture if requested
@@ -304,21 +308,18 @@ def main(pargs):
         # wait for everybody
         dist.barrier()
 
-        # example input
-        train_example = [torch.ones( (pargs.local_batch_size, *input_shape), dtype=torch.float32, device=device)]
-
-        # NHWC
-        if pargs.enable_nhwc:
-            train_example = [x.contiguous(memory_format = torch.channels_last) for x in train_example]
+        ddp_net.module = gh.capture_model(pargs, 
+                                          ddp_net.module, 
+                                          input_shape, 
+                                          device, 
+                                          graph_stream = scaffolding_stream)
         
-        # capture graph
-        net_train.module = cg.capture_graph(net_train.module, 
-                                            tuple(t.clone() for t in train_example), 
-                                            warmup_iters = 10,
-                                            use_amp = pargs.enable_amp and not pargs.enable_jit)
+        # disable benchmarking here, otherwise pytorch will attemnpt to 
+        # benchmark the model again and likely crash
+        torch.backends.cudnn.benchmark = False
         
     # Set up the data feeder
-    train_loader, train_size, validation_loader, validation_size = get_dataloaders(root_dir, pargs, device, seed, comm_size, comm_rank)
+    train_loader, train_size, validation_loader, validation_size = get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank)
     
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
@@ -350,11 +351,6 @@ def main(pargs):
     # start trining
     logger.log_end(key = "init_stop", sync = True)
     logger.log_start(key = "run_start", sync = True)
-
-    ## start prefetching
-    #if pargs.enable_dali:
-    #    train_loader.init_iterator()
-    #    validation_loader.init_iterator()
 
     # training loop
     while True:

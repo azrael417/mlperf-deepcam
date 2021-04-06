@@ -436,21 +436,12 @@ class GlobalAveragePool(nn.Module):
 
     def forward(self, x):
         return self.global_average_pool(x)
-        
-                
-                
-class DeepLabv3_plus(nn.Module):
-    def __init__(self, n_input=3, n_classes=21, os=16, pretrained=False, _print=True, rank = 0, process_group = None):
-        if _print and (rank == 0):
-            print("Constructing DeepLabv3+ model...")
-            print("Number of output channels: {}".format(n_classes))
-            print("Output stride: {}".format(os))
-            print("Number of Input Channels: {}".format(n_input))
-        super(DeepLabv3_plus, self).__init__()
 
-        # Atrous Conv
-        self.xception_features = Xception(n_input, os, pretrained, process_group = process_group)
 
+class Bottleneck(nn.Module):
+    def __init__(self, in_channels, out_channels, os, process_group = None):
+        super(Bottleneck, self).__init__()
+            
         # ASPP
         if os == 16:
             rates = [1, 6, 12, 18]
@@ -459,31 +450,22 @@ class DeepLabv3_plus(nn.Module):
         else:
             raise NotImplementedError
 
-        self.aspp1 = ASPP_module(2048, 256, rate=rates[0], process_group = process_group)
-        self.aspp2 = ASPP_module(2048, 256, rate=rates[1], process_group = process_group)
-        self.aspp3 = ASPP_module(2048, 256, rate=rates[2], process_group = process_group)
-        self.aspp4 = ASPP_module(2048, 256, rate=rates[3], process_group = process_group)
-
-        self.relu = nn.ReLU()
+        self.aspp1 = ASPP_module(in_channels, out_channels, rate=rates[0], process_group = process_group)
+        self.aspp2 = ASPP_module(in_channels, out_channels, rate=rates[1], process_group = process_group)
+        self.aspp3 = ASPP_module(in_channels, out_channels, rate=rates[2], process_group = process_group)
+        self.aspp4 = ASPP_module(in_channels, out_channels, rate=rates[3], process_group = process_group)
 
         # removed batch normalization in this layer
-        self.global_avg_pool = GlobalAveragePool(2048, 256)
+        self.global_avg_pool = GlobalAveragePool(in_channels, out_channels)
+        self.tiles = (1, 1, 48, 72)
 
-        self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
-        self.bn1 = get_batchnorm(256, fuse_relu=False, process_group=process_group)
+        # convs and relus
+        self.conv = nn.Conv2d(5 * out_channels, out_channels, 1, bias=False)
+        self.bn = get_batchnorm(out_channels, fuse_relu=False, process_group=process_group)
+        self.relu = nn.ReLU()
 
-        # adopt [1x1, 48] for channel reduction.
-        self.conv2 = nn.Conv2d(128, 48, 1, bias=False)
-        self.bn2 = get_batchnorm(48, fuse_relu=False, process_group=process_group)
 
-        # upsampling
-        #self.upsample = InterpolationUpsampler(n_classes)
-        self.upsample = DeconvUpsampler(n_classes, process_group = process_group)
-
-    def forward(self, input):
-        x, low_level_features = self.xception_features(input)
-
-        # ASPP step
+    def forward(self, x):
         x1 = self.aspp1(x)
         x2 = self.aspp2(x)
         x3 = self.aspp3(x)
@@ -494,14 +476,87 @@ class DeepLabv3_plus(nn.Module):
         #x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
 
         # this is the same and much cheaper
-        tiled = (1, 1, *(x4.size()[2:]))
-        x5 = torch.tile(x5, tiled)
+        x5 = torch.tile(x5, self.tiles)
         
+        # concat
         x = torch.cat((x1, x2, x3, x4, x5), dim=1)
-
-        x = self.conv1(x)
-        x = self.bn1(x)
+        
+        # process
+        x = self.conv(x)
+        x = self.bn(x)
         x = self.relu(x)
+        
+        return x
+    
+                
+class DeepLabv3_plus(nn.Module):
+    def __init__(self, n_input=3, n_classes=21, os=16, pretrained=False, _print=True, rank = 0, process_group = None):
+        if _print and (rank == 0):
+            print("Constructing DeepLabv3+ model...")
+            print("Number of output channels: {}".format(n_classes))
+            print("Output stride: {}".format(os))
+            print("Number of Input Channels: {}".format(n_input))
+        super(DeepLabv3_plus, self).__init__()
+
+        # encoder
+        self.xception_features = Xception(n_input, os, pretrained, process_group = process_group)
+
+        # bottleneck
+        self.bottleneck = Bottleneck(2048, 256, os, process_group = process_group)
+
+        ## ASPP
+        #if os == 16:
+        #    rates = [1, 6, 12, 18]
+        #elif os == 8:
+        #    rates = [1, 12, 24, 36]
+        #else:
+        #    raise NotImplementedError
+        #
+        #self.aspp1 = ASPP_module(2048, 256, rate=rates[0], process_group = process_group)
+        #self.aspp2 = ASPP_module(2048, 256, rate=rates[1], process_group = process_group)
+        #self.aspp3 = ASPP_module(2048, 256, rate=rates[2], process_group = process_group)
+        #self.aspp4 = ASPP_module(2048, 256, rate=rates[3], process_group = process_group)
+
+        ## removed batch normalization in this layer
+        #self.global_avg_pool = GlobalAveragePool(2048, 256)
+
+        #self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
+        #self.bn1 = get_batchnorm(256, fuse_relu=False, process_group=process_group)
+
+        # adopt [1x1, 48] for channel reduction.
+        self.conv2 = nn.Conv2d(128, 48, 1, bias=False)
+        self.bn2 = get_batchnorm(48, fuse_relu=False, process_group=process_group)
+        self.relu = nn.ReLU()
+
+        # upsampling
+        self.upsample = DeconvUpsampler(n_classes, process_group = process_group)
+
+    def forward(self, input):
+        # encoder
+        x, low_level_features = self.xception_features(input)
+        
+        # bottleneck
+        x = self.bottleneck(x)
+        
+        ## ASPP step
+        #x1 = self.aspp1(x)
+        #x2 = self.aspp2(x)
+        #x3 = self.aspp3(x)
+        #x4 = self.aspp4(x)
+        #x5 = self.global_avg_pool(x)
+        #
+        ## this is very expensive in BW
+        ##x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
+        #
+        ## this is the same and much cheaper
+        #tiled = (1, 1, *(x4.size()[2:]))
+        #x5 = torch.tile(x5, tiled)
+        #
+        #x = torch.cat((x1, x2, x3, x4, x5), dim=1)
+
+        #x = self.conv1(x)
+        #x = self.bn1(x)
+        #x = self.relu(x)
 
         # low level feature processing
         low_level_features = self.conv2(low_level_features)
