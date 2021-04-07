@@ -272,9 +272,6 @@ def main(pargs):
     
     # jit stuff
     if pargs.enable_jit:
-        # sync the device
-        scaffolding_stream.synchronize()
-        
         # example input
         train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
         validation_example = torch.ones( (1, *input_shape), device=device)

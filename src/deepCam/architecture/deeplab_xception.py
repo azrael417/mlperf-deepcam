@@ -94,7 +94,7 @@ class Block(nn.Module):
         
         if planes != inplanes or stride != 1:
             self.skip = nn.Conv2d(inplanes, planes, 1, stride=stride, bias=False)
-            self.skipbn = get_batchnorm(planes, fuse_relu=False, process_group=process_group)
+            self.skipbn = get_batchnorm(planes, process_group=process_group)
         else:
             self.skip = None
 
@@ -105,18 +105,18 @@ class Block(nn.Module):
         if grow_first:
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(inplanes, planes, 3, stride=1, dilation=dilation))
-            rep.append(get_batchnorm(planes, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(planes, process_group=process_group))
             filters = planes
 
         for i in range(reps - 1):
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(filters, filters, 3, stride=1, dilation=dilation))
-            rep.append(get_batchnorm(filters, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(filters, process_group=process_group))
 
         if not grow_first:
             rep.append(self.relu)
             rep.append(SeparableConv2d_same(inplanes, planes, 3, stride=1, dilation=dilation))
-            rep.append(get_batchnorm(planes, fuse_relu=False, process_group=process_group))
+            rep.append(get_batchnorm(planes, process_group=process_group))
 
         if not start_with_relu:
             rep = rep[1:]
@@ -166,10 +166,10 @@ class Xception(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         
         self.conv1 = nn.Conv2d(inplanes, 32, 3, stride=2, padding=1, bias=False)
-        self.bn1 = get_batchnorm(32, fuse_relu=False, process_group=process_group)
+        self.bn1 = get_batchnorm(32, process_group=process_group)
 
         self.conv2 = nn.Conv2d(32, 64, 3, stride=1, padding=1, bias=False)
-        self.bn2 = get_batchnorm(64, fuse_relu=False, process_group=process_group)
+        self.bn2 = get_batchnorm(64, process_group=process_group)
 
         self.block1 = Block(64, 128, reps=2, stride=2, start_with_relu=False, process_group=process_group)
         self.block2 = Block(128, 256, reps=2, stride=2, start_with_relu=True, grow_first=True, process_group=process_group)
@@ -201,13 +201,13 @@ class Xception(nn.Module):
                              start_with_relu=True, grow_first=False, is_last=True, process_group=process_group)
         
         self.conv3 = SeparableConv2d_same(1024, 1536, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn3 = get_batchnorm(1536, fuse_relu=False, process_group=process_group)
+        self.bn3 = get_batchnorm(1536, process_group=process_group)
 
         self.conv4 = SeparableConv2d_same(1536, 1536, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn4 = get_batchnorm(1536, fuse_relu=False, process_group=process_group)
+        self.bn4 = get_batchnorm(1536, process_group=process_group)
 
         self.conv5 = SeparableConv2d_same(1536, 2048, 3, stride=1, dilation=exit_block_rates[1])
-        self.bn5 = get_batchnorm(2048, fuse_relu=False, process_group=process_group)
+        self.bn5 = get_batchnorm(2048, process_group=process_group)
 
         # Init weights
         self.__init_weight()
@@ -271,7 +271,7 @@ class Xception(nn.Module):
                 # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm) or isinstance(m, BatchNorm2d_NHWC):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
@@ -315,7 +315,7 @@ class ASPP_module(nn.Module):
         self.atrous_convolution = nn.Conv2d(inplanes, planes, kernel_size=kernel_size,
                                             stride=1, padding=padding, dilation=rate, bias=False)
                                             
-        self.bn = get_batchnorm(planes, fuse_relu=False, process_group=process_group)
+        self.bn = get_batchnorm(planes, process_group=process_group)
         self.relu = nn.ReLU()
 
         self.__init_weight()
@@ -333,7 +333,7 @@ class ASPP_module(nn.Module):
                 # n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 # m.weight.data.normal_(0, math.sqrt(2. / n))
                 torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm) or isinstance(m, BatchNorm2d_NHWC):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
@@ -344,22 +344,22 @@ class DeconvUpsampler(nn.Module):
 
         # deconvs
         self.deconv1 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, process_group=process_group),
                                      nn.ReLU(),
                                      nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, process_group=process_group),
                                      nn.ReLU())
             
         self.conv1 = nn.Sequential(nn.Conv2d(304, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                   get_batchnorm(256, fuse_relu=False, process_group=process_group),
+                                   get_batchnorm(256, process_group=process_group),
                                    nn.ReLU(),
                                    nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=False),
-                                   get_batchnorm(256, fuse_relu=False, process_group=process_group),
+                                   get_batchnorm(256, process_group=process_group),
                                    nn.ReLU(),
                                    nn.Conv2d(256, 256, kernel_size=1, stride=1))
             
         self.deconv2 = nn.Sequential(nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=1, output_padding=(1,1), bias=False),
-                                     get_batchnorm(256, fuse_relu=False, process_group=process_group),
+                                     get_batchnorm(256, process_group=process_group),
                                      nn.ReLU())
 
 	    #no bias or BN on the last deconv
@@ -381,7 +381,7 @@ class DeconvUpsampler(nn.Module):
             elif isinstance(m, nn.ConvTranspose2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm) or isinstance(m, BatchNorm2d_NHWC):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
@@ -437,7 +437,7 @@ class Bottleneck(nn.Module):
 
         # convs and relus
         self.conv = nn.Conv2d(5 * out_channels, out_channels, 1, bias=False)
-        self.bn = get_batchnorm(out_channels, fuse_relu=False, process_group=process_group)
+        self.bn = get_batchnorm(out_channels, process_group=process_group)
         self.relu = nn.ReLU()
 
 
@@ -479,7 +479,7 @@ class DeepLabv3_plus(nn.Module):
 
         # adopt [1x1, 48] for channel reduction.
         self.conv2 = nn.Conv2d(128, 48, 1, bias=False)
-        self.bn2 = get_batchnorm(48, fuse_relu=False, process_group=process_group)
+        self.bn2 = get_batchnorm(48, process_group=process_group)
         self.relu = nn.ReLU()
 
         # upsampling
@@ -513,7 +513,7 @@ class DeepLabv3_plus(nn.Module):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
                 # torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm) or isinstance(m, BatchNorm2d_NHWC):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.SyncBatchNorm):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
