@@ -30,47 +30,23 @@ import torch.cuda.amp as amp
 # typing used for torch script
 from typing import List
 
-# import hack
-from groupbn.batch_norm import BatchNorm2d_NHWC
-
-
-class LBN(nn.Module):
-    def __init__(self, num_features):
-        super(LBN, self).__init__()
-
-        self.bn = nn.BatchNorm2d(num_features)
-
-    def forward(self, x):
-        return self.bn(x)
-
 
 class GBN(nn.Module):
-    def __init__(self, num_features, fuse_relu=False, process_group=None):
+    def __init__(self, num_features, process_group=None):
         super(GBN, self).__init__()
         
         if process_group is None:
-            bngsize = 1
+            self.bn = nn.BatchNorm2d(num_features)
         else:
-            bngsize = process_group.size()
-            
-        self.bn = BatchNorm2d_NHWC(num_features, fuse_relu=fuse_relu, bn_group=bngsize)
+            self.bn = nn.SyncBatchNorm(num_features, process_group=process_group)
 
     def forward(self, x):
-        with amp.autocast(enabled=False):
-            dtype = x.dtype
-            x = x.half()
-            x = self.bn(x)
-            if dtype == torch.float32:
-                x = x.float()
+        x = self.bn(x)
         return x
 
 
-def get_batchnorm(num_features, fuse_relu=False, process_group=None):
-    if process_group is not None:
-        return GBN(num_features, fuse_relu=False, process_group=None)
-    else:
-        return LBN(num_features)
-    
+def get_batchnorm(num_features, process_group=None):
+    return GBN(num_features, process_group=process_group)
 
     
 class SeparableConv2d(nn.Module):
@@ -472,9 +448,6 @@ class Bottleneck(nn.Module):
         x4 = self.aspp4(x)
         x5 = self.global_avg_pool(x)
 
-        # this is very expensive in BW
-        #x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
-
         # this is the same and much cheaper
         x5 = torch.tile(x5, self.tiles)
         
@@ -504,25 +477,6 @@ class DeepLabv3_plus(nn.Module):
         # bottleneck
         self.bottleneck = Bottleneck(2048, 256, os, process_group = process_group)
 
-        ## ASPP
-        #if os == 16:
-        #    rates = [1, 6, 12, 18]
-        #elif os == 8:
-        #    rates = [1, 12, 24, 36]
-        #else:
-        #    raise NotImplementedError
-        #
-        #self.aspp1 = ASPP_module(2048, 256, rate=rates[0], process_group = process_group)
-        #self.aspp2 = ASPP_module(2048, 256, rate=rates[1], process_group = process_group)
-        #self.aspp3 = ASPP_module(2048, 256, rate=rates[2], process_group = process_group)
-        #self.aspp4 = ASPP_module(2048, 256, rate=rates[3], process_group = process_group)
-
-        ## removed batch normalization in this layer
-        #self.global_avg_pool = GlobalAveragePool(2048, 256)
-
-        #self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
-        #self.bn1 = get_batchnorm(256, fuse_relu=False, process_group=process_group)
-
         # adopt [1x1, 48] for channel reduction.
         self.conv2 = nn.Conv2d(128, 48, 1, bias=False)
         self.bn2 = get_batchnorm(48, fuse_relu=False, process_group=process_group)
@@ -538,26 +492,6 @@ class DeepLabv3_plus(nn.Module):
         # bottleneck
         x = self.bottleneck(x)
         
-        ## ASPP step
-        #x1 = self.aspp1(x)
-        #x2 = self.aspp2(x)
-        #x3 = self.aspp3(x)
-        #x4 = self.aspp4(x)
-        #x5 = self.global_avg_pool(x)
-        #
-        ## this is very expensive in BW
-        ##x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
-        #
-        ## this is the same and much cheaper
-        #tiled = (1, 1, *(x4.size()[2:]))
-        #x5 = torch.tile(x5, tiled)
-        #
-        #x = torch.cat((x1, x2, x3, x4, x5), dim=1)
-
-        #x = self.conv1(x)
-        #x = self.bn1(x)
-        #x = self.relu(x)
-
         # low level feature processing
         low_level_features = self.conv2(low_level_features)
         low_level_features = self.bn2(low_level_features)

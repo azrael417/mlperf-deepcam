@@ -42,7 +42,6 @@ def parse_arguments():
     AP.add_argument("--enable_jit", action='store_true')
     AP.add_argument("--enable_dali", action='store_true')
     AP.add_argument("--enable_nhwc", action='store_true')
-    AP.add_argument("--enable_graph", action='store_true')
     AP.add_argument("--disable_comm_overlap", action='store_true')
     AP.add_argument("--data_augmentations", type=str, nargs='+', default=[], help="Data augmentations used. Supported are [roll, flip]")
     AP.add_argument("--enable_wandb", action='store_true')

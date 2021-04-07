@@ -48,7 +48,6 @@ from driver import train_step, validate
 from utils import parser
 from utils import losses
 from utils import optimizer_helpers as oh
-from utils import graph_helpers as gh
 from data import get_dataloaders, get_datashapes
 from architecture import deeplab_xception
 
@@ -264,15 +263,12 @@ def main(pargs):
         bucket_cap_mb = 110 if pargs.enable_amp else 220
     
     # get stream, relevant for graph capture
-    scaffolding_stream = torch.cuda.current_stream() if not pargs.enable_graph else torch.cuda.Stream()
-    
-    with torch.cuda.stream(scaffolding_stream):
-        ddp_net = DDP(net, device_ids=[device.index],
-                      output_device=device.index,
-                      find_unused_parameters=False,
-                      broadcast_buffers=False,
-                      bucket_cap_mb=bucket_cap_mb,
-                      gradient_as_bucket_view=False)
+    ddp_net = DDP(net, device_ids=[device.index],
+                  output_device=device.index,
+                  find_unused_parameters=False,
+                  broadcast_buffers=False,
+                  bucket_cap_mb=bucket_cap_mb,
+                  gradient_as_bucket_view=False)
     
     # jit stuff
     if pargs.enable_jit:
@@ -302,21 +298,6 @@ def main(pargs):
     else:
         net_validate = ddp_net
         net_train = ddp_net
-    
-    # graph capture if requested
-    if pargs.enable_graph:
-        # wait for everybody
-        dist.barrier()
-
-        ddp_net.module = gh.capture_model(pargs, 
-                                          ddp_net.module, 
-                                          input_shape, 
-                                          device, 
-                                          graph_stream = scaffolding_stream)
-        
-        # disable benchmarking here, otherwise pytorch will attemnpt to 
-        # benchmark the model again and likely crash
-        torch.backends.cudnn.benchmark = False
         
     # Set up the data feeder
     train_loader, train_size, validation_loader, validation_size = get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank)
