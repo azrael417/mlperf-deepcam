@@ -73,6 +73,10 @@ class NumpyReadPipeline(Pipeline):
                                            perm = [2, 0, 1],
                                            bytes_per_sample_hint = self.data_size)
 
+        self.lcast = ops.Cast(device = "gpu",
+                              dtype=types.DALIDataType.INT64,
+                              bytes_per_sample_hint = self.label_size)
+
         self.augmentations = augmentations
         if self.augmentations:
             # casts
@@ -149,6 +153,9 @@ class NumpyReadPipeline(Pipeline):
 
         # normalize now:
         data = self.normalize(data)
+
+        # convert label to long
+        label = self.lcast(label)
 
         # transpose data to NCHW if requested
         if self.do_transpose:

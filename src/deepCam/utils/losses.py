@@ -82,7 +82,7 @@ class CELoss(nn.Module):
         target = target.squeeze(1)
         
         # get losses and predictions
-        losses = self.criterion(logit, target.long())
+        losses = self.criterion(logit, target)
 
         # average
         loss = torch.mean(losses)

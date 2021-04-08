@@ -32,7 +32,7 @@ def compute_score(prediction, gt, num_classes):
     
     #cast type for GT tensor. not needed for new
     #pytorch but much cleaner
-    gt = gt.type(torch.long)
+    #gt = gt.type(torch.long)
     
     # define equal and not equal masks
     equal = (prediction == gt)
@@ -65,7 +65,7 @@ def compute_score_new(prediction: Tensor, gt: Tensor, num_classes: int) -> Tenso
 
     #cast type for GT tensor. not needed for new
     #pytorch but much cleaner
-    gt = gt.to(torch.long)
+    #gt = gt.to(torch.long)
     
     # define equal and not equal masks
     equal = (prediction == gt)

@@ -145,7 +145,7 @@ class CamDataset(Dataset):
         #load data and project
         with h5.File(filename, "r") as f:
             data = f["climate/data"][..., self.channels]
-            label = f["climate/labels_0"][...]
+            label = f["climate/labels_0"][...].astype(np.int64)
         
         #preprocess
         data = self.data_scale * (data - self.data_shift)
