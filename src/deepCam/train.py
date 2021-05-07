@@ -61,7 +61,6 @@ except ImportError:
 
 # vis stuff
 from PIL import Image
-from utils import visualizer as vizc
 
 # DDP
 import torch.distributed as dist
@@ -314,6 +313,7 @@ def main(pargs):
     #for visualization
     viz = None
     if (visualize_train or visualize_validation):
+        from utils import visualizer as vizc
         viz = vizc.CamVisualizer(plot_dir)   
     
     # Train network
