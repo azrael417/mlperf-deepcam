@@ -6,9 +6,6 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data import DistributedSampler
 
-from .cam_hdf5_dataset import CamDataset, peek_shapes_hdf5
-from .cam_numpy_dali_dataset import CamDaliDataloader, peek_shapes_numpy
-
 # helper function for determining the data shapes
 def get_datashapes(pargs, root_dir):
     
@@ -22,6 +19,10 @@ def get_datashapes(pargs, root_dir):
 def get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank):
     
     if not pargs.enable_dali:
+
+        # import only what we need
+        from .cam_hdf5_dataset import CamDataset, peek_shapes_hdf5
+        
         train_dir = os.path.join(root_dir, "train")
         train_set = CamDataset(train_dir, 
                                statsfile = os.path.join(root_dir, 'stats.h5'),
@@ -50,6 +51,8 @@ def get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank):
         train_size = train_set.global_size
 
     else:
+        from .cam_numpy_dali_dataset import CamDaliDataloader, peek_shapes_numpy
+        
         train_dir = os.path.join(root_dir, "train")
         train_loader = CamDaliDataloader(train_dir,
                                          'data-*.npy',

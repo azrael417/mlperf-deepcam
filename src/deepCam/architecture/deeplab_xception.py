@@ -91,7 +91,11 @@ class Block(nn.Module):
     def __init__(self, inplanes, planes, reps, stride=1, dilation=1, end_with_relu=True, grow_first=True, is_last=False,
                  process_group=None):
         super(Block, self).__init__()
-        
+
+        # store here
+        self.end_with_relu = end_with_relu
+
+        # do we need strides in skip conv?
         if planes != inplanes or stride != 1:
             self.skip = nn.Conv2d(inplanes, planes, 1, stride=stride, bias=False)
             self.skipbn = get_batchnorm(planes, process_group=process_group)

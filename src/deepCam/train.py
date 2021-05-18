@@ -337,7 +337,7 @@ def main(pargs):
         logger.log_start(key = "epoch_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync=True)
 
         if not pargs.enable_dali:
-            distributed_train_sampler.set_epoch(epoch)
+            train_loader.sampler.set_epoch(epoch)
 
         # epoch loop
         with torch.autograd.profiler.emit_nvtx(enabled = False):
