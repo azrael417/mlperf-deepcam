@@ -44,6 +44,9 @@ def train_step(pargs, comm_rank, comm_size,
                inputs, label, filename, 
                logger, have_wandb, viz):
 
+    # make sure net is set to train
+    net.train()
+    
     if not pargs.enable_dali:
         # send to device
         inputs = inputs.to(device)
