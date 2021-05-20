@@ -1,7 +1,4 @@
 #!/bin/bash
-#SBATCH -A hpc
-#SBATCH -J train_cam5
-#SBATCH -t 00:10:00
 
 # The MIT License (MIT)
 #
@@ -24,42 +21,30 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ranks per node
-rankspernode=16
-totalranks=$(( ${SLURM_NNODES} * ${rankspernode} ))
+# parameters
+data_dir=""
+output_dir=""
+run_tag="test_run"
+local_batch_size=2
 
-#parameters
-run_tag="deepcam_prediction_run5_nnodes${SLURM_NNODES}-4"
-data_dir_prefix="/data"
-output_dir="/runs/${run_tag}"
-checkpoint_file="${output_dir}/classifier_step_17200.cpt"
-
-#create directories
-mkdir -p ${output_dir}
-
-#run training
-srun --wait=30 --mpi=pmix -N ${SLURM_NNODES} -n ${totalranks} -c $(( 96 / ${rankspernode} )) --cpu_bind=cores \
-     --container-workdir /opt/deepCam \
-     --container-mounts=/gpfs/fs1/tkurth/cam5_dataset/All-Hist:/data:ro,/gpfs/fs1/tkurth/cam5_runs:/runs:rw \
-     --container-image=gitlab-master.nvidia.com/tkurth/mlperf-deepcam:debug \
-     python ./train_hdf5_ddp.py \
-       --wireup_method "nccl-slurm" \
+python ./train.py \
+       --wireup_method "dummy" \
        --run_tag ${run_tag} \
-       --data_dir_prefix ${data_dir_prefix} \
+       --data_dir_prefix ${data_dir} \
        --output_dir ${output_dir} \
        --model_prefix "segmentation" \
        --optimizer "LAMB" \
-       --start_lr 1e-3 \
-       --lr_schedule type="multistep",milestones="15000 25000",decay_rate="0.1" \
-       --lr_warmup_steps 0 \
-       --lr_warmup_factor $(( ${SLURM_NNODES} / 8 )) \
+       --adam_eps 1e-6 \
+       --start_lr 0.0055 \
+       --lr_schedule type="multistep",milestones="800",decay_rate="0.1" \
+       --lr_warmup_steps 400 \
+       --lr_warmup_factor 1. \
        --weight_decay 1e-2 \
-       --validation_frequency 200 \
-       --training_visualization_frequency 200 \
-       --validation_visualization_frequency 40 \
-       --max_validation_steps 50 \
+       --validation_frequency 100 \
        --logging_frequency 10 \
-       --save_frequency 400 \
+       --save_frequency 10000 \
        --max_epochs 200 \
-       --amp_opt_level O1 \
-       --local_batch_size 2 |& tee -a ${output_dir}/train.out
+       --max_inter_threads 4 \
+       --seed $(date +%s) \
+       --batchnorm_group_size 1 \
+       --local_batch_size ${local_batch_size}

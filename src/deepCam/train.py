@@ -155,7 +155,8 @@ def main(pargs):
 
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
-    dist.broadcast(steptens, src = 0)
+    if dist.is_initialized():
+        dist.broadcast(steptens, src = 0)
 
     #unpack the bcasted tensor
     start_step = int(steptens.cpu().numpy()[0])

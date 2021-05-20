@@ -22,7 +22,7 @@ The dataset folder contains a README with some technical description of the
 dataset and an All-Hist folder containing all of the data files.
 
 ### Preprocessing
-The dataset is split into train/val/test and ships with the stats.h5 file containing summary statistics.
+The dataset is split into train/val/test and ships with the `stats.h5` file containing summary statistics.
 
 ## Before you run
 
@@ -39,7 +39,7 @@ Submission example scripts are in `src/deepCam/run_scripts`.
 The implementation comes with a Dockerfile optimized for NVIDIA workstations but usable on 
 other NVIDIA multi-gpu systems. Use the Dockerfile 
 `docker/Dockerfile.train` to build the container and the script `src/deepCam/run_scripts/run_training.sh`
-for training.
+for training. The data_dir variable should point to the full path of the `All-Hist` directory containing the downloaded dataset.
 
 ## References
 
