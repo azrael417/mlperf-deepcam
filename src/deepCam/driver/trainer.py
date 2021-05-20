@@ -77,7 +77,8 @@ def train_step(pargs, comm_rank, comm_size,
             loss_avg_train = loss_avg.item() / float(comm_size)
     
             # Compute score
-            predictions = torch.max(outputs, 1)[1]
+            # predictions = torch.max(outputs, 1)[1]
+            predictions = torch.argmax(torch.softmax(outputs, 1), 1)
             iou = metric.compute_score(predictions, label, num_classes=3)
             iou_avg = iou.detach()
             if dist.is_initialized():

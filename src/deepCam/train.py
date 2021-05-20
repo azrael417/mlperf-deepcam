@@ -39,6 +39,7 @@ from driver import train_step, validate
 from utils import parser
 from utils import losses
 from utils import optimizer_helpers as oh
+from utils import bnstats as bns
 from data import get_dataloaders, get_datashapes
 from architecture import deeplab_xception
 
@@ -184,6 +185,9 @@ def main(pargs):
                   broadcast_buffers=False,
                   bucket_cap_mb=bucket_cap_mb,
                   gradient_as_bucket_view=False)
+
+    # get stats handler here
+    bnstats_handler = bns.BatchNormStatsSynchronize(ddp_net, reduction = "mean", inplace = True)
     
     # create handles
     net_validate = ddp_net
@@ -223,7 +227,10 @@ def main(pargs):
                           optimizer, scheduler,
                           train_loader,
                           logger)
-            
+
+        # average BN stats
+        bnstats_handler.synchronize()
+        
         # validation
         stop_training = validate(pargs, comm_rank, comm_size,
                                  device, step, epoch, 
