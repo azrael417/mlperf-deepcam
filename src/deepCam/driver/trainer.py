@@ -58,14 +58,15 @@ def train_step(pargs, comm_rank, comm_size,
         if (step + 1) % pargs.gradient_accumulation_frequency == 0:
             optimizer.step()
             optimizer.zero_grad()
+
+            # do a scheduler step if relevant
+            if pargs.lr_schedule:
+                current_lr = scheduler.get_last_lr()[0]
+                scheduler.step()
     
-        # step counter
+        # increase step counter
         step += 1
-    
-        if pargs.lr_schedule:
-            current_lr = scheduler.get_last_lr()[0]
-            scheduler.step()
-    
+        
         #log if requested
         if (step % pargs.logging_frequency == 0):
     
