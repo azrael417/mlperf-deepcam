@@ -41,57 +41,20 @@ https://portal.nersc.gov/project/dasrepo/deepcam/climseg-data-small/
 
 ## Before you run
 
-Make sure you have a working python environment with `pytorch`, `h5py`, `basemap` and `wandb` setup. 
+Make sure you have a working python environment with `pytorch` and `h5py` setup. 
 If you want to use learning rate warmup, you must also install the warmup-scheduler package
 available at https://github.com/ildoonet/pytorch-gradual-warmup-lr.
 
-The training uses Weights & Biases (WandB/W&B, https://app.wandb.ai) as logging facility. 
-In order to use it, please sign up, log in and create a new project. 
-Create a file named `.wandbirc` containing the user login and the API key as follows:
-
-```bash
-<login> <API key>
-```
-
-Place this file in a directory accessible by the workers.
-
 ## How to run the benchmark
 
-Submission scripts are in `src/deepCam/run_scripts`.
-
-### Running at NERSC
-
-To submit to the Cori KNL system, set up a conda env called
-`mlperf_deepcam` which contains all the prereqs, such as `h5py`, `wandb` and `basemap`.
-Please edit the entries
-
-```bash
-export PROJ_LIB=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/share/basemap
-export PYTHONPATH=/global/homes/t/tkurth/.conda/envs/mlperf_deepcam/lib/python3.7/site-packages:${PYTHONPATH}
-```
-
-in `src/deepCam/run_scripts/run_training_cori.sh` to point to the correct paths and add 
-
-```bash
---wandb_certdir <my-cert-dir>
-```
-to the arguments passed to the python training script. Here, `<my-cert-dir>`
-should point to the directory which contains the `.wandbirc` file created before.
-Then run
-
-```bash
-# This example runs on 64 nodes.
-cd src/deepCam/run_scripts
-sbatch -N 64 run_training_cori.sh
-```
+Submission example scripts are in `src/deepCam/run_scripts`.
 
 ### Using Docker
 
-The implementation comes with a Dockerfile optimized for NVIDIA DGX-2 workstations but usable on 
+The implementation comes with a Dockerfile optimized for NVIDIA workstations but usable on 
 other NVIDIA multi-gpu systems. Use the Dockerfile 
-`docker/Dockerfile.train` to build the container and the script `src/deepCam/run_scripts/run_training_dgx2.sh`
-for training. Please create a file `no-git/wandb_cert.key` 
-formatted as mentioned above before building the image so that the builder can properly place your WandB credentials inside the container.
+`docker/Dockerfile.train` to build the container and the script `src/deepCam/run_scripts/run_training.sh`
+for training.
 
 ## References
 
