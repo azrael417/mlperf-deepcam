@@ -40,9 +40,8 @@ python ./train.py \
        --lr_warmup_steps 400 \
        --lr_warmup_factor 1. \
        --weight_decay 1e-2 \
-       --validation_frequency 100 \
        --logging_frequency 10 \
-       --save_frequency 10000 \
+       --save_frequency 0 \
        --max_epochs 200 \
        --max_inter_threads 4 \
        --seed $(date +%s) \

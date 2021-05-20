@@ -216,48 +216,39 @@ def main(pargs):
 
         train_loader.sampler.set_epoch(epoch)
 
-        # epoch loop
-        with torch.autograd.profiler.emit_nvtx(enabled = False):
-            for inputs, label, filename in train_loader:
-                
-                step = train_step(pargs, comm_rank, comm_size,
-                                  device, step, epoch, 
-                                  net_train, criterion, 
-                                  optimizer, scheduler,
-                                  inputs, label, filename, 
-                                  logger)
+        # training
+        step = train_step(pargs, comm_rank, comm_size,
+                          device, step, epoch, 
+                          net_train, criterion, 
+                          optimizer, scheduler,
+                          train_loader,
+                          logger)
             
-                # validation step if desired
-                if (step % pargs.validation_frequency == 0):
-                    
-                    stop_training = validate(pargs, comm_rank, comm_size,
-                                             device, step, epoch, 
-                                             net_validate, criterion, validation_loader, 
-                                             logger)
-            
-                #save model if desired
-                if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
-                    logger.log_start(key = "save_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
-                    if comm_rank == 0:
-                        checkpoint = {
-                            'step': step,
-                            'epoch': epoch,
-                            'model': net_train.state_dict(),
-                            'optimizer': optimizer.state_dict()
-		                }
-                        torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
-                    logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+        # validation
+        stop_training = validate(pargs, comm_rank, comm_size,
+                                 device, step, epoch, 
+                                 net_validate, criterion, validation_loader, 
+                                 logger)
 
-                # Stop training?
-                if stop_training:
-                    break
-            
         # log the epoch
         logger.log_end(key = "epoch_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
         epoch += 1
         
+        #save model if desired
+        if (pargs.save_frequency > 0) and (epoch % pargs.save_frequency == 0):
+            logger.log_start(key = "save_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+            if comm_rank == 0:
+                checkpoint = {
+                    'step': step,
+                    'epoch': epoch,
+                    'model': net_train.state_dict(),
+                    'optimizer': optimizer.state_dict()
+                }
+                torch.save(checkpoint, os.path.join(output_dir, pargs.model_prefix + "_step_" + str(step) + ".cpt") )
+                logger.log_end(key = "save_stop", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync = True)
+                    
         # are we done?
-        if epoch >= pargs.max_epochs or stop_training:
+        if (epoch >= pargs.max_epochs) or stop_training:
             break
 
     # run done

@@ -34,55 +34,58 @@ def train_step(pargs, comm_rank, comm_size,
                device, step, epoch, 
                net, criterion, 
                optimizer, scheduler,
-               inputs, label, filename, 
+               train_loader,
                logger):
 
     # make sure net is set to train
     net.train()
-    
-    # send to device
-    inputs = inputs.to(device)
-    label = label.to(device)
-    
-    # forward pass
-    outputs = net.forward(inputs)
-    loss = criterion(outputs, label)
 
-    # backward pass
-    loss.backward()
+    # do the training loop
+    for inputs, label, filename in train_loader:
     
-    # optimizer step if requested
-    if (step + 1) % pargs.gradient_accumulation_frequency == 0:
-        optimizer.step()
-        optimizer.zero_grad()
+        # send to device
+        inputs = inputs.to(device)
+        label = label.to(device)
     
-    # step counter
-    step += 1
-    
-    if pargs.lr_schedule:
-        current_lr = scheduler.get_last_lr()[0]
-        scheduler.step()
-    
-    #log if requested
-    if (step % pargs.logging_frequency == 0):
-    
-        # allreduce for loss
-        loss_avg = loss.detach()
-        if dist.is_initialized():
-            dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
-        loss_avg_train = loss_avg.item() / float(comm_size)
-    
-        # Compute score
-        predictions = torch.max(outputs, 1)[1]
-        iou = metric.compute_score(predictions, label, num_classes=3)
-        iou_avg = iou.detach()
-        if dist.is_initialized():
-            dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
-        iou_avg_train = iou_avg.item() / float(comm_size)
+        # forward pass
+        outputs = net.forward(inputs)
+        loss = criterion(outputs, label) / float(pargs.gradient_accumulation_frequency)
 
-        # log values
-        logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
-        logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
-        logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
+        # backward pass
+        loss.backward()
+    
+        # optimizer step if requested
+        if (step + 1) % pargs.gradient_accumulation_frequency == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+    
+        # step counter
+        step += 1
+    
+        if pargs.lr_schedule:
+            current_lr = scheduler.get_last_lr()[0]
+            scheduler.step()
+    
+        #log if requested
+        if (step % pargs.logging_frequency == 0):
+    
+            # allreduce for loss
+            loss_avg = loss.detach()
+            if dist.is_initialized():
+                dist.reduce(loss_avg, dst=0, op=dist.ReduceOp.SUM)
+            loss_avg_train = loss_avg.item() / float(comm_size)
+    
+            # Compute score
+            predictions = torch.max(outputs, 1)[1]
+            iou = metric.compute_score(predictions, label, num_classes=3)
+            iou_avg = iou.detach()
+            if dist.is_initialized():
+                dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
+            iou_avg_train = iou_avg.item() / float(comm_size)
+
+            # log values
+            logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
+            logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
+            logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
             
     return step
