@@ -41,6 +41,7 @@ def parse_arguments():
     AP.add_argument("--max_inter_threads", type=int, default=1, help="Maximum number of concurrent readers")
     AP.add_argument("--max_epochs", type=int, default=30, help="Maximum number of epochs to train")
     AP.add_argument("--save_frequency", type=int, default=100, help="Frequency with which the model is saved in number of steps")
+    AP.add_argument("--gradient_accumulation_frequency", type=int, default=1, help="Number of gradient accumulation steps before update")
     AP.add_argument("--validation_frequency", type=int, default=100, help="Frequency with which the model is validated")
     AP.add_argument("--logging_frequency", type=int, default=100, help="Frequency with which the training progress is logged. If not positive, logging will be disabled")
     AP.add_argument("--local_batch_size", type=int, default=1, help="Number of samples per local minibatch")

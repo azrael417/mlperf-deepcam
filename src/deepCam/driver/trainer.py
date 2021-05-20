@@ -47,11 +47,14 @@ def train_step(pargs, comm_rank, comm_size,
     # forward pass
     outputs = net.forward(inputs)
     loss = criterion(outputs, label)
-    
-    # Backprop
-    optimizer.zero_grad()
+
+    # backward pass
     loss.backward()
-    optimizer.step()
+    
+    # optimizer step if requested
+    if (step + 1) % pargs.gradient_accumulation_frequency == 0:
+        optimizer.step()
+        optimizer.zero_grad()
     
     # step counter
     step += 1
