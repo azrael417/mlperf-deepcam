@@ -67,7 +67,6 @@ def validate(pargs, comm_rank, comm_size,
             count_sum_val += 1.
         
             # Compute score
-            #predictions_val = torch.max(outputs_val, 1)[1]
             predictions_val = torch.argmax(torch.softmax(outputs_val, 1), 1)
             iou_val = metric.compute_score(predictions_val, label_val, num_classes=3)
             iou_sum_val += iou_val
