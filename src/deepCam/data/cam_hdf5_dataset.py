@@ -85,7 +85,6 @@ class CamDataset(Dataset):
                  shuffle = False,
                  preprocess = True,
                  transpose = True,
-                 augmentations = [],
                  comm_size = 1, comm_rank = 0, seed = 12345):
         
         self.source = source
@@ -94,7 +93,6 @@ class CamDataset(Dataset):
         self.shuffle = shuffle
         self.preprocess = preprocess
         self.transpose = transpose
-        self.augmentations = augmentations
         self.all_files = sorted( [ os.path.join(self.source,x) for x in os.listdir(self.source) if x.endswith('.h5') ] )
         self.comm_size = comm_size
         self.comm_rank = comm_rank
@@ -125,10 +123,6 @@ class CamDataset(Dataset):
         if comm_rank == 0:
             print("Initialized dataset with ", self.global_size, " samples.")
 
-        #rng for augmentations
-        if self.augmentations:
-            self.rng = np.random.default_rng()
-
 
     def __len__(self):
         return self.local_size
@@ -149,20 +143,6 @@ class CamDataset(Dataset):
         
         #preprocess
         data = self.data_scale * (data - self.data_shift)
-
-        #augment HWC data
-        if self.augmentations:
-            # roll in W
-            if "roll" in self.augmentations:
-                shift = int(self.rng.random() * data.shape[1])
-                data = np.roll(data, shift, axis=1)
-                label = np.roll(label, shift, axis=1)
-
-            # flip in H (mirror horizontally)
-            if "flip" in self.augmentations:
-                if self.rng.random() > 0.5:
-                    data = np.flip(data, axis=0).copy()
-                    label = np.flip(label, axis=0).copy()
 
         if self.transpose:
             #transpose to NCHW

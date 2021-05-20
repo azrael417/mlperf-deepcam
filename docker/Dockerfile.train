@@ -21,17 +21,11 @@
 
 FROM nvcr.io/nvidia/pytorch:21.04-py3
 
-# reinstall DALI
-ENV DALI_VERSION 1.0
-RUN pip uninstall -y nvidia-dali-cuda110 && \
-    pip uninstall -y pynvml && \
-    pip install nvidia-ml-py==11.450.51 && \
-    pip install --extra-index-url https://developer.download.nvidia.com/compute/redist/nightly nvidia-dali-nightly-cuda110
-
 #Install conda prereqs
-RUN conda config --add channels conda-forge \
-    && conda install matplotlib basemap basemap-data-hires pillow h5py
-ENV PROJ_LIB /opt/conda/share/proj
+#RUN conda config --add channels conda-forge \
+#    && conda install matplotlib basemap basemap-data-hires pillow h5py
+#ENV PROJ_LIB /opt/conda/share/proj
+RUN pip install h5py
 
 #install mpi4py
 RUN pip install mpi4py
@@ -51,11 +45,6 @@ RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
 #install torchsummary
 #RUN pip install torchsummary
-
-#update apex
-RUN cd /opt && git clone https://github.com/NVIDIA/apex.git && cd apex && \
-    pip uninstall -y apex && \
-    pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 
 #copy additional stuff
 COPY src/deepCam /opt/deepCam

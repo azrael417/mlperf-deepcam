@@ -40,12 +40,9 @@ except ImportError:
 def validate(pargs, comm_rank, comm_size,
              device, step, epoch, 
              net, criterion, validation_loader, 
-             logger, have_wandb, viz):
+             logger, have_wandb):
     
     logger.log_start(key = "eval_start", metadata = {'epoch_num': epoch+1})
-
-    # do we visualize? 
-    visualize_validation = (pargs.validation_visualization_frequency > 0)
 
     #eval
     net.eval()
@@ -60,36 +57,16 @@ def validate(pargs, comm_rank, comm_size,
         # iterate over validation sample
         step_val = 0
         # only print once per eval at most
-        visualized = False
         for inputs_val, label_val, filename_val in validation_loader:
 
-            if not pargs.enable_dali:
-                #send to device
-                inputs_val = inputs_val.to(device)
-                label_val = label_val.to(device)
-            else:
-                if inputs_val.numel() == 0:
-                    # we are done
-                    continue
-
-            # to NHWC
-            if pargs.enable_nhwc:
-                N, H, W, C = (1, 768, 1152, 16)
-                inputs_val = torch.as_strided(inputs_val, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
-                #inputs_val = inputs_val.contiguous(memory_format = torch.channels_last)
+            #send to device
+            inputs_val = inputs_val.to(device)
+            label_val = label_val.to(device)
             
             # forward pass
             with amp.autocast(enabled = False):
                 outputs_val = net.forward(inputs_val)
-
-                # NCHW
-                if pargs.enable_nhwc:
-                    outputs_val = outputs_val.contiguous(memory_format = torch.contiguous_format)
-
-                outputs_val = outputs_val.float()
-                    
-            # Compute loss
-            loss_val = criterion(outputs_val, label_val)
+                loss_val = criterion(outputs_val, label_val)
 
             # accumulate loss
             loss_sum_val += loss_val
@@ -101,33 +78,10 @@ def validate(pargs, comm_rank, comm_size,
             predictions_val = torch.max(outputs_val, 1)[1]
             iou_val = metric.compute_score_new(predictions_val, label_val, num_classes=3)
             iou_sum_val += iou_val
-
-            # Visualize
-            if visualize_validation and (step_val % pargs.validation_visualization_frequency == 0) and (not visualized) and (comm_rank == 0):
-                #extract sample id and data tensors
-                sample_idx = np.random.randint(low=0, high=label_val.shape[0])
-                plot_input = inputs_val.detach()[sample_idx, 0,...].cpu().numpy()
-                plot_prediction = predictions_val.detach()[sample_idx,...].cpu().numpy()
-                plot_label = label_val.detach()[sample_idx,...].cpu().numpy()
-                
-                #create filenames
-                outputfile = os.path.basename(filename[sample_idx]).replace("data-", "validation-").replace(".h5", ".png")
-                
-                #plot
-                viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
-                visualized = True
-            
-                #log if requested
-                if have_wandb:
-                    img = Image.open(outputfile)
-                    wandb.log({"eval_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
         
             #increase eval step counter
             step_val += 1
-        
-            if (pargs.max_validation_steps is not None) and step_val > pargs.max_validation_steps:
-                break
-        
+                
         # average the validation loss
         dist.all_reduce(count_sum_val, op=dist.ReduceOp.SUM, async_op=False)
         dist.reduce(loss_sum_val, dst=0, op=dist.ReduceOp.SUM)

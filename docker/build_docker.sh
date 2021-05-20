@@ -27,22 +27,3 @@ cd ..
 #training container
 docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:newref -f docker/Dockerfile.train .
 docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:newref
-
-#docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp -f docker/Dockerfile.sharp .
-#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:sharp
-
-##tag for NERSC registry
-#docker tag gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:debug registry.services.nersc.gov/tkurth/mlperf-deepcam:debug
-#docker push registry.services.nersc.gov/tkurth/mlperf-deepcam:debug
-
-##profiling container (public)
-#nvidia-docker build -t registry.services.nersc.gov/tkurth/mlperf-deepcam:profile -f docker/Dockerfile.profile.public .
-#docker push registry.services.nersc.gov/tkurth/mlperf-deepcam:profile
-
-##profiling container (internal)
-#nvidia-docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:profile_internal -f docker/Dockerfile.profile.internal .
-#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:profile_internal
-
-# gds
-#docker build -t gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds -f docker/Dockerfile.train.gds .
-#docker push gitlab-master.nvidia.com:5005/tkurth/mlperf-deepcam:gds

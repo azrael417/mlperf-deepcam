@@ -42,44 +42,21 @@ def train_step(pargs, comm_rank, comm_size,
                net, criterion, 
                optimizer, gscaler, scheduler,
                inputs, label, filename, 
-               logger, have_wandb, viz):
+               logger, have_wandb):
 
     # make sure net is set to train
     net.train()
     
-    if not pargs.enable_dali:
-        # send to device
-        inputs = inputs.to(device)
-        label = label.to(device)
-    
-    # to NHWC
-    if pargs.enable_nhwc:
-        N, H, W, C = (pargs.local_batch_size, 768, 1152, 16)
-        inputs = torch.as_strided(inputs, size=[N, C, H, W], stride = [C*H*W, 1, W*C, C])
-        #inputs = inputs.contiguous(memory_format = torch.channels_last)
+    # send to device
+    inputs = inputs.to(device)
+    label = label.to(device)
     
     # forward pass
-    if pargs.enable_jit:
-        # JIT
+    with amp.autocast(enabled = pargs.enable_amp):
         outputs = net.forward(inputs)
-        
-        with amp.autocast(enabled = pargs.enable_amp):
-            # to NCHW
-            if pargs.enable_nhwc:
-                outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-            loss = criterion(outputs, label)
-    else:
-        # NO-JIT
-        with amp.autocast(enabled = pargs.enable_amp):
-            outputs = net.forward(inputs)
-            
-            # to NCHW
-            if pargs.enable_nhwc:
-                outputs = outputs.contiguous(memory_format = torch.contiguous_format)
-            loss = criterion(outputs, label)
+        loss = criterion(outputs, label)
     
     # Backprop
-    #optimizer.zero_grad(set_to_none = True)
     optimizer.zero_grad()
     gscaler.scale(loss).backward()
     gscaler.step(optimizer)
@@ -91,28 +68,6 @@ def train_step(pargs, comm_rank, comm_size,
     if pargs.lr_schedule:
         current_lr = scheduler.get_last_lr()[0]
         scheduler.step()
-    
-    #visualize if requested
-    if (viz is not None) and (step % pargs.training_visualization_frequency == 0) and (comm_rank == 0):
-        # Compute predictions
-        predictions = torch.max(outputs, 1)[1]
-        
-        # extract sample id and data tensors
-        sample_idx = np.random.randint(low=0, high=label.shape[0])
-        plot_input = inputs.detach()[sample_idx, 0,...].cpu().numpy()
-        plot_prediction = predictions.detach()[sample_idx,...].cpu().numpy()
-        plot_label = label.detach()[sample_idx,...].cpu().numpy()
-    
-        # create filenames
-        outputfile = os.path.basename(filename[sample_idx]).replace("data-", "training-").replace(".h5", ".png")
-    
-        # plot
-        viz.plot(filename[sample_idx], outputfile, plot_input, plot_prediction, plot_label)
-    
-        #log if requested
-        if have_wandb:
-            img = Image.open(outputfile)
-            wandb.log({"train_examples": [wandb.Image(img, caption="Prediction vs. Ground Truth")]}, step = step)
     
     #log if requested
     if (step % pargs.logging_frequency == 0):

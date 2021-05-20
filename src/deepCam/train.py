@@ -59,9 +59,6 @@ try:
 except ImportError:
     pass
 
-# vis stuff
-from PIL import Image
-
 # DDP
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
@@ -105,10 +102,6 @@ def main(pargs):
         torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
-
-    #visualize?
-    visualize_train = (pargs.training_visualization_frequency > 0)
-    visualize_validation = (pargs.validation_visualization_frequency > 0)
         
     #set up directories
     root_dir = os.path.join(pargs.data_dir_prefix)
@@ -117,8 +110,6 @@ def main(pargs):
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
-        if (visualize_train or visualize_validation) and not os.path.isdir(plot_dir):
-            os.makedirs(plot_dir)
     
     # Setup WandB
     if not pargs.enable_wandb:
@@ -198,21 +189,13 @@ def main(pargs):
     else:
         start_step = 0
         start_epoch = 0
-    
-    # convert to NHWC
-    if pargs.enable_nhwc:
-        net = net.to(memory_format = torch.channels_last)
 
     #select loss
     loss_pow = pargs.loss_weight_pow
     #some magic numbers
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
-    fpw_1 = 2.61461122397522257612
-    fpw_2 = 1.71641974795896018744
-    #criterion = losses.FPLoss(class_weights, fpw_1, fpw_2).to(device)
     criterion = losses.CELoss(class_weights).to(device)
-    if pargs.enable_jit:
-        criterion = torch.jit.script(criterion)
+    criterion = torch.jit.script(criterion)
 
     #select optimizer
     optimizer = oh.get_optimizer(pargs, net)
@@ -258,7 +241,7 @@ def main(pargs):
     
     #distributed model parameters
     bucket_cap_mb = 25
-    if pargs.batchnorm_group_size > 1 or pargs.disable_comm_overlap:
+    if pargs.batchnorm_group_size > 1:
         bucket_cap_mb = 110 if pargs.enable_amp else 220
     
     # get stream, relevant for graph capture
@@ -269,55 +252,20 @@ def main(pargs):
                   bucket_cap_mb=bucket_cap_mb,
                   gradient_as_bucket_view=False)
     
-    # jit stuff
-    if pargs.enable_jit:
-        # example input
-        train_example = torch.ones( (pargs.local_batch_size, *input_shape), device=device)
-        validation_example = torch.ones( (1, *input_shape), device=device)
-
-        # backup old network
-        net_validate = net
-
-        # NHWC if requested
-        if pargs.enable_nhwc:
-            train_example = train_example.contiguous(memory_format = torch.channels_last)
-            validation_example = validation_example.contiguous(memory_format = torch.channels_last)
-
-        # compile the model
-        if pargs.enable_amp:
-            with amp.autocast(enabled = pargs.enable_amp):
-                ddp_net.module = torch.jit.trace(ddp_net.module, train_example, check_trace = False)
-        else:
-            ddp_net.module = torch.jit.script(ddp_net.module)
-
-        net_train = ddp_net
-    else:
-        net_validate = ddp_net
-        net_train = ddp_net
+    # create handles
+    net_validate = ddp_net
+    net_train = ddp_net
         
     # Set up the data feeder
     train_loader, train_size, validation_loader, validation_size = get_dataloaders(pargs, root_dir, device, seed, comm_size, comm_rank)
     
     # log size of datasets
     logger.log_event(key = "train_samples", value = train_size)
-    if pargs.max_validation_steps is not None:
-        val_size = min([validation_size, pargs.max_validation_steps * pargs.local_batch_size * comm_size])
-    else:
-        val_size = validation_size
+    val_size = validation_size
     logger.log_event(key = "eval_samples", value = val_size)
-
-    # do sanity check
-    if pargs.max_validation_steps is not None:
-        logger.log_event(key = "invalid_submission")
-    
-    #for visualization
-    viz = None
-    if (visualize_train or visualize_validation):
-        from utils import visualizer as vizc
-        viz = vizc.CamVisualizer(plot_dir)   
-    
+        
     # Train network
-    if have_wandb and not pargs.enable_jit and (comm_rank == 0):
+    if have_wandb and (comm_rank == 0):
         wandb.watch(net_train)
     
     step = start_step
@@ -336,8 +284,7 @@ def main(pargs):
         # start epoch
         logger.log_start(key = "epoch_start", metadata = {'epoch_num': epoch+1, 'step_num': step}, sync=True)
 
-        if not pargs.enable_dali:
-            train_loader.sampler.set_epoch(epoch)
+        train_loader.sampler.set_epoch(epoch)
 
         # epoch loop
         with torch.autograd.profiler.emit_nvtx(enabled = False):
@@ -348,7 +295,7 @@ def main(pargs):
                                   net_train, criterion, 
                                   optimizer, gscaler, scheduler,
                                   inputs, label, filename, 
-                                  logger, have_wandb, viz)
+                                  logger, have_wandb)
             
                 # validation step if desired
                 if (step % pargs.validation_frequency == 0):
@@ -356,7 +303,7 @@ def main(pargs):
                     stop_training = validate(pargs, comm_rank, comm_size,
                                              device, step, epoch, 
                                              net_validate, criterion, validation_loader, 
-                                             logger, have_wandb, viz)
+                                             logger, have_wandb)
             
                 #save model if desired
                 if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):
