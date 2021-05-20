@@ -56,8 +56,6 @@ def parse_arguments():
     AP.add_argument("--target_iou", type=float, default=0.82, help="Target IoU score.")
     AP.add_argument("--model_prefix", type=str, default="model", help="Prefix for the stored model")
     AP.add_argument("--batchnorm_group_size", type=int, default=1, help="Process group size for sync batchnorm")
-    AP.add_argument("--enable_amp", action='store_true')
-    AP.add_argument("--enable_wandb", action='store_true')
     AP.add_argument("--resume_logging", action='store_true')
     AP.add_argument("--seed", default=333, type=int)
     pargs = AP.parse_args()

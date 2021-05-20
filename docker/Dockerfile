@@ -21,21 +21,11 @@
 
 FROM nvcr.io/nvidia/pytorch:21.04-py3
 
-#Install conda prereqs
-#RUN conda config --add channels conda-forge \
-#    && conda install matplotlib basemap basemap-data-hires pillow h5py
-#ENV PROJ_LIB /opt/conda/share/proj
+# some requirements
 RUN pip install h5py
 
 #install mpi4py
 RUN pip install mpi4py
-
-# pyprof
-RUN pip install nvidia-pyindex && \
-    pip install nvidia-dlprof[pytorch]
-
-#pip install more python modules
-RUN pip install wandb
 
 #install mlperf logging
 RUN pip install "git+https://github.com/mlperf/logging.git"
@@ -43,19 +33,9 @@ RUN pip install "git+https://github.com/mlperf/logging.git"
 #install gradual warmup
 RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 
-#install torchsummary
-#RUN pip install torchsummary
-
 #copy additional stuff
 COPY src/deepCam /opt/deepCam
 COPY src/utils /opt/utils
-
-#init empty git repo so that wandb works
-RUN cd /opt/deepCam && git init
-
-#copy cert:
-RUN mkdir -p /opt/certs
-COPY no-git/wandb_cert.key /opt/certs/.wandbirc
 
 #create additional folders for mapping data in
 RUN mkdir -p /data

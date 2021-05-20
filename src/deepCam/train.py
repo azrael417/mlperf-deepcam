@@ -27,15 +27,6 @@ import datetime as dt
 import subprocess as sp
 
 # logging
-# wandb
-have_wandb = False
-try:
-    import wandb
-    have_wandb = True
-except ImportError:
-    pass
-
-# mlperf logger
 import utils.mlperf_log_utils as mll
 
 # Torch
@@ -63,17 +54,11 @@ except ImportError:
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 
-# amp
-import torch.cuda.amp as amp
-
 #comm wrapper
 from utils import comm
 
 #main function
 def main(pargs):
-
-    # this should be global
-    global have_wandb
 
     #init distributed training
     comm_local_group = comm.init(pargs.wireup_method, pargs.batchnorm_group_size)
@@ -97,7 +82,6 @@ def main(pargs):
     if torch.cuda.is_available():
         device = torch.device("cuda", comm_local_rank)
         torch.cuda.manual_seed(seed)
-        #necessary for AMP to work
         torch.cuda.set_device(device)
         torch.backends.cudnn.benchmark = True
     else:
@@ -110,56 +94,6 @@ def main(pargs):
     if comm_rank == 0:
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir)
-    
-    # Setup WandB
-    if not pargs.enable_wandb:
-        have_wandb = False
-    if have_wandb and (comm_rank == 0):
-        # get wandb api token
-        certfile = os.path.join(pargs.wandb_certdir, ".wandbirc")
-        try:
-            with open(certfile) as f:
-                token = f.readlines()[0].replace("\n","").split()
-                wblogin = token[0]
-                wbtoken = token[1]
-        except IOError:
-            print("Error, cannot open WandB certificate {}.".format(certfile))
-            have_wandb = False
-
-        if have_wandb:
-            # log in: that call can be blocking, it should be quick
-            sp.call(["wandb", "login", wbtoken])
-        
-            #init db and get config
-            resume_flag = pargs.run_tag if pargs.resume_logging else False
-            wandb.init(entity = wblogin, project = 'deepcam', 
-                       dir = output_dir,
-                       name = pargs.run_tag, id = pargs.run_tag, 
-                       resume = resume_flag)
-            config = wandb.config
-        
-            #set general parameters
-            config.root_dir = root_dir
-            config.output_dir = pargs.output_dir
-            config.max_epochs = pargs.max_epochs
-            config.local_batch_size = pargs.local_batch_size
-            config.num_workers = comm_size
-            config.channels = pargs.channels
-            config.optimizer = pargs.optimizer
-            config.start_lr = pargs.start_lr
-            config.adam_eps = pargs.adam_eps
-            config.weight_decay = pargs.weight_decay
-            config.model_prefix = pargs.model_prefix
-            config.enable_amp = pargs.enable_amp
-            config.loss_weight_pow = pargs.loss_weight_pow
-            config.lr_warmup_steps = pargs.lr_warmup_steps
-            config.lr_warmup_factor = pargs.lr_warmup_factor
-            
-            # lr schedule if applicable
-            if pargs.lr_schedule is not None:
-                for key in pargs.lr_schedule:
-                    config.update({"lr_schedule_"+key: pargs.lr_schedule[key]}, allow_val_change = True)
-
 
     # Logging hyperparameters
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
@@ -168,6 +102,7 @@ def main(pargs):
     logger.log_event(key = "opt_learning_rate_warmup_steps", value = pargs.lr_warmup_steps)
     logger.log_event(key = "opt_learning_rate_warmup_factor", value = pargs.lr_warmup_factor)
     logger.log_event(key = "opt_epsilon", value = pargs.adam_eps)
+    logger.log_event(key = "seed", value = pargs.seed)
 
     # Define architecture
     n_input_channels = len(pargs.channels)
@@ -199,9 +134,6 @@ def main(pargs):
 
     #select optimizer
     optimizer = oh.get_optimizer(pargs, net)
-    
-    # gradient scaler
-    gscaler = amp.GradScaler(enabled = pargs.enable_amp)
         
     #select scheduler
     if pargs.lr_schedule:
@@ -242,7 +174,7 @@ def main(pargs):
     #distributed model parameters
     bucket_cap_mb = 25
     if pargs.batchnorm_group_size > 1:
-        bucket_cap_mb = 110 if pargs.enable_amp else 220
+        bucket_cap_mb = 220
     
     # get stream, relevant for graph capture
     ddp_net = DDP(net, device_ids=[device.index],
@@ -263,11 +195,8 @@ def main(pargs):
     logger.log_event(key = "train_samples", value = train_size)
     val_size = validation_size
     logger.log_event(key = "eval_samples", value = val_size)
-        
-    # Train network
-    if have_wandb and (comm_rank == 0):
-        wandb.watch(net_train)
-    
+
+    # get start steps
     step = start_step
     epoch = start_epoch
     current_lr = pargs.start_lr if not pargs.lr_schedule else scheduler.get_last_lr()[0]
@@ -293,9 +222,9 @@ def main(pargs):
                 step = train_step(pargs, comm_rank, comm_size,
                                   device, step, epoch, 
                                   net_train, criterion, 
-                                  optimizer, gscaler, scheduler,
+                                  optimizer, scheduler,
                                   inputs, label, filename, 
-                                  logger, have_wandb)
+                                  logger)
             
                 # validation step if desired
                 if (step % pargs.validation_frequency == 0):
@@ -303,7 +232,7 @@ def main(pargs):
                     stop_training = validate(pargs, comm_rank, comm_size,
                                              device, step, epoch, 
                                              net_validate, criterion, validation_loader, 
-                                             logger, have_wandb)
+                                             logger)
             
                 #save model if desired
                 if (pargs.save_frequency > 0) and (step % pargs.save_frequency == 0):

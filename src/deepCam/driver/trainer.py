@@ -24,25 +24,18 @@ import os
 
 # torch
 import torch
-import torch.cuda.amp as amp
 import torch.distributed as dist
 
 # custom stuff
 from utils import metric
 
-# import wandb
-try:
-    import wandb
-except ImportError:
-    pass
-
 
 def train_step(pargs, comm_rank, comm_size,
                device, step, epoch, 
                net, criterion, 
-               optimizer, gscaler, scheduler,
+               optimizer, scheduler,
                inputs, label, filename, 
-               logger, have_wandb):
+               logger):
 
     # make sure net is set to train
     net.train()
@@ -52,15 +45,13 @@ def train_step(pargs, comm_rank, comm_size,
     label = label.to(device)
     
     # forward pass
-    with amp.autocast(enabled = pargs.enable_amp):
-        outputs = net.forward(inputs)
-        loss = criterion(outputs, label)
+    outputs = net.forward(inputs)
+    loss = criterion(outputs, label)
     
     # Backprop
     optimizer.zero_grad()
-    gscaler.scale(loss).backward()
-    gscaler.step(optimizer)
-    gscaler.update()
+    loss.backward()
+    optimizer.step()
     
     # step counter
     step += 1
@@ -79,7 +70,7 @@ def train_step(pargs, comm_rank, comm_size,
     
         # Compute score
         predictions = torch.max(outputs, 1)[1]
-        iou = metric.compute_score_new(predictions, label, num_classes=3)
+        iou = metric.compute_score(predictions, label, num_classes=3)
         iou_avg = iou.detach()
         dist.reduce(iou_avg, dst=0, op=dist.ReduceOp.SUM)
         iou_avg_train = iou_avg.item() / float(comm_size)
@@ -88,10 +79,5 @@ def train_step(pargs, comm_rank, comm_size,
         logger.log_event(key = "learning_rate", value = current_lr, metadata = {'epoch_num': epoch+1, 'step_num': step})
         logger.log_event(key = "train_accuracy", value = iou_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
         logger.log_event(key = "train_loss", value = loss_avg_train, metadata = {'epoch_num': epoch+1, 'step_num': step})
-    
-        if have_wandb and (comm_rank == 0):
-            wandb.log({"train_loss": loss_avg.item() / float(comm_size)}, step = step)
-            wandb.log({"train_accuracy": iou_avg.item() / float(comm_size)}, step = step)
-            wandb.log({"learning_rate": current_lr}, step = step)
             
     return step
