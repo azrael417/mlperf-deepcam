@@ -24,25 +24,38 @@ from torch import Tensor
 
 
 def compute_score(prediction: Tensor, gt: Tensor, num_classes: int) -> Tensor:
-    #flatten input
-    tpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
-    fpt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
-    fnt = torch.zeros((num_classes), dtype=torch.long, device=prediction.device)
+    # flatten input
+    batch_size = gt.shape[0]
+    tpt = torch.zeros((batch_size, num_classes), dtype=torch.long, device=prediction.device)
+    fpt = torch.zeros((batch_size, num_classes), dtype=torch.long, device=prediction.device)
+    fnt = torch.zeros((batch_size, num_classes), dtype=torch.long, device=prediction.device)
     
-    # define equal and not equal masks
-    equal = (prediction == gt)
-    not_equal = (prediction != gt)
+    # create views:
+    pv = prediction.view(batch_size, -1)
+    gtv = gt.view(batch_size, -1)
     
+    # compute per class accuracy
     for j in range(0, num_classes):
-        #true positve: prediction and gt agree and gt is of class j
-        tpt[j] = torch.sum(equal[gt == j])
-        #false positive: prediction is of class j and gt not of class j
-        fpt[j] = torch.sum(not_equal[prediction == j])
-        #false negative: prediction is not of class j and gt is of class j
-        fnt[j] = torch.sum(not_equal[gt == j])
+        # compute helper tensors
+        pv_eq_j = (pv == j)
+        pv_ne_j = (pv != j)
+        gtv_eq_j = (gtv == j)
+        gtv_ne_j = (gtv != j)
+        
+        #true positve: prediction and gt agree and gt is of class j: (p == j) & (g == j)
+        tpt[:, j] = torch.sum(torch.logical_and(pv_eq_j, gtv_eq_j), dim=1)
+        
+        #false positive: prediction is of class j and gt not of class j: (p == j) & (g != j)
+        fpt[:, j] = torch.sum(torch.logical_and(pv_eq_j, gtv_ne_j), dim=1)
 
-    # compute IoU
+        #false negative: prediction is not of class j and gt is of class j: (p != j) & (g == j)
+        fnt[:, j] = torch.sum(torch.logical_and(pv_ne_j, gtv_eq_j), dim=1)
+        
+    # compute IoU per batch
     uniont = (tpt + fpt + fnt) * num_classes
-    iout = torch.sum(torch.nan_to_num(tpt.float() / uniont.float(), nan=1./float(num_classes)))
+    iout = torch.sum(torch.nan_to_num(tpt.float() / uniont.float(), nan=1./float(num_classes)), dim=1)
+        
+    # average over batch dim
+    iout = torch.mean(iout)
     
     return iout
