@@ -22,16 +22,16 @@
 FROM nvcr.io/nvidia/pytorch:21.04-py3
 
 # some requirements
-RUN pip install h5py
+RUN pip install h5py==3.2.1
 
 #install mpi4py
-RUN pip install mpi4py
+RUN pip install mpi4py==3.0.3
 
 #install mlperf logging
-RUN pip install "git+https://github.com/mlperf/logging.git"
+RUN pip install "git+https://github.com/mlperf/logging.git@501bbde47f005d67c6357da6e5c1931eab339f8e"
 
 #install gradual warmup
-RUN pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
+RUN pip install "git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git@6b5e8953a80aef5b324104dc0c2e9b8c34d622bd"
 
 #copy additional stuff
 COPY src/deepCam /opt/deepCam
