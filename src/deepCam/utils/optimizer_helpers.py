@@ -105,7 +105,7 @@ def get_optimizer(pargs, net, logger):
             optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr,
                                          eps = defaults["adam_eps"],
                                          weight_decay = pargs.weight_decay,
-                                         set_grad_none = not pargs.enable_graph)
+                                         set_grad_none = True)
         else:
             raise NotImplementedError("Error, optimizer LAMB requires APEX")
     else:
