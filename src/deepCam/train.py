@@ -113,7 +113,7 @@ def main(pargs):
     optimizer = oh.get_optimizer(pargs, net, logger)
 
     #restart from checkpoint if desired
-    if pargs.checkpoint if not None:
+    if pargs.checkpoint is not None:
         checkpoint = torch.load(pargs.checkpoint, map_location = device)
         start_step = checkpoint['step']
         start_epoch = checkpoint['epoch']
