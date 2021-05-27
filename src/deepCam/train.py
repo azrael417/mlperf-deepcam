@@ -90,7 +90,6 @@ def main(pargs):
 
     # Logging hyperparameters
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-    logger.log_event(key = "seed", value = pargs.seed)
     logger.log_event(key = "checkpoint", value = pargs.checkpoint)
 
     # Define architecture
