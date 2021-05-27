@@ -47,7 +47,6 @@ def parse_arguments():
     AP.add_argument("--channels", type=int, nargs='+', default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], help="Channels used in input")
     AP.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "AdamW", "LAMB"], help="Optimizer to use (LAMB requires APEX support).")
     AP.add_argument("--start_lr", type=float, default=1e-3, help="Start LR")
-    AP.add_argument("--adam_eps", type=float, default=1e-8, help="Adam Epsilon")
     AP.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     AP.add_argument("--loss_weight_pow", type=float, default=-0.125, help="Decay factor to adjust the weights")
     AP.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for linear LR warmup")

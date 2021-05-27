@@ -43,14 +43,6 @@ from utils import bnstats as bns
 from data import get_dataloaders, get_datashapes
 from architecture import deeplab_xception
 
-#warmup scheduler
-have_warmup_scheduler = False
-try:
-    from warmup_scheduler import GradualWarmupScheduler
-    have_warmup_scheduler = True
-except ImportError:
-    pass
-
 # DDP
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
@@ -98,12 +90,8 @@ def main(pargs):
 
     # Logging hyperparameters
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
-    logger.log_event(key = "opt_name", value = pargs.optimizer)
-    logger.log_event(key = "opt_base_learning_rate", value = pargs.start_lr * pargs.lr_warmup_factor)
-    logger.log_event(key = "opt_learning_rate_warmup_steps", value = pargs.lr_warmup_steps)
-    logger.log_event(key = "opt_learning_rate_warmup_factor", value = pargs.lr_warmup_factor)
-    logger.log_event(key = "opt_epsilon", value = pargs.adam_eps)
     logger.log_event(key = "seed", value = pargs.seed)
+    logger.log_event(key = "checkpoint", value = pargs.checkpoint)
 
     # Define architecture
     n_input_channels = len(pargs.channels)
@@ -115,17 +103,6 @@ def main(pargs):
                                           process_group = comm_local_group)
     net.to(device)
     
-    #restart from checkpoint if desired
-    if pargs.checkpoint:
-        checkpoint = torch.load(pargs.checkpoint, map_location = device)
-        start_step = checkpoint['step']
-        start_epoch = checkpoint['epoch']
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        net.load_state_dict(checkpoint['model'])
-    else:
-        start_step = 0
-        start_epoch = 0
-
     #select loss
     loss_pow = pargs.loss_weight_pow
     #some magic numbers
@@ -134,34 +111,34 @@ def main(pargs):
     criterion = torch.jit.script(criterion)
 
     #select optimizer
-    optimizer = oh.get_optimizer(pargs, net)
-        
-    #select scheduler
-    if pargs.lr_schedule:
-        scheduler_after = oh.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, last_step = start_step)
+    optimizer = oh.get_optimizer(pargs, net, logger)
 
-        # LR warmup
-        if pargs.lr_warmup_steps > 0:
-            if have_warmup_scheduler:
-                scheduler = GradualWarmupScheduler(optimizer, multiplier=pargs.lr_warmup_factor,
-                                                   total_epoch=pargs.lr_warmup_steps,
-                                                   after_scheduler=scheduler_after)
-            # Throw an error if the package is not found
-            else:
-                raise Exception(f'Requested {pargs.lr_warmup_steps} LR warmup steps '
-                                'but warmup scheduler not found. Install it from '
-                                'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
-        else:
-            scheduler = scheduler_after
+    #restart from checkpoint if desired
+    if pargs.checkpoint if not None:
+        checkpoint = torch.load(pargs.checkpoint, map_location = device)
+        start_step = checkpoint['step']
+        start_epoch = checkpoint['epoch']
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        net.load_state_dict(checkpoint['model'])
+    else:
+        start_step = 0
+        start_epoch = 0   
 
     #broadcast model and optimizer state
     steptens = torch.tensor(np.array([start_step, start_epoch]), requires_grad=False).to(device)
     if dist.is_initialized():
         dist.broadcast(steptens, src = 0)
-
+        
     #unpack the bcasted tensor
     start_step = int(steptens.cpu().numpy()[0])
-    start_epoch = int(steptens.cpu().numpy()[1])
+    start_epoch = int(steptens.cpu().numpy()[1])  
+                                    
+    #select scheduler
+    scheduler = None
+    if pargs.lr_schedule:
+        pargs.lr_schedule["lr_warmup_steps"] = pargs.lr_warmup_steps
+        pargs.lr_schedule["lr_warmup_factor"] = pargs.lr_warmup_factor
+        scheduler = oh.get_lr_schedule(pargs.start_lr, pargs.lr_schedule, optimizer, logger, last_step = start_step)
     
     # print parameters
     if comm_rank == 0:

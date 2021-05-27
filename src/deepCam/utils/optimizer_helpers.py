@@ -26,44 +26,95 @@ import torch.optim as optim
 
 try:
     import apex.optimizers as aoptim
-    import apex.contrib.optimizers as acoptim
     have_apex = True
 except ImportError:
-    from utils import optimizer as uoptim
     print("NVIDIA APEX not found")
     have_apex = False
 
-def get_lr_schedule(start_lr, scheduler_arg, optimizer, last_step = -1):
+#warmup scheduler
+have_warmup_scheduler = False
+try:
+    from warmup_scheduler import GradualWarmupScheduler
+    have_warmup_scheduler = True
+except ImportError:
+    pass 
+    
+    
+def get_lr_schedule(start_lr, scheduler_arg, optimizer, logger, last_step = -1):
     #add the initial_lr to the optimizer
-    optimizer.param_groups[0]["initial_lr"] = start_lr
+    for pgroup in optimizer.param_groups:
+        pgroup["initial_lr"] = start_lr
 
+    # scheduler name
+    for key in scheduler_arg:
+        logger.log_event(key = "scheduler_" + key, value = scheduler_arg[key])
+
+    # after-scheduler
+    scheduler_after = None
+    
     #now check
     if scheduler_arg["type"] == "multistep":
+        # set the parameters
         milestones = [ int(x) for x in scheduler_arg["milestones"].split() ]
         gamma = float(scheduler_arg["decay_rate"])
-        return optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma, last_epoch = last_step)
+
+        # create scheduler
+        scheduler_after = optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma = gamma, last_epoch = last_step)
+    
     elif scheduler_arg["type"] == "cosine_annealing":
+        # set parameters
         t_max = int(scheduler_arg["t_max"])
         eta_min = 0. if "eta_min" not in scheduler_arg else float(scheduler_arg["eta_min"])
-        return optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = t_max, eta_min = eta_min)
+
+        # create scheduler
+        scheduler_after =  optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = t_max, eta_min = eta_min)
+    
     else:
         raise ValueError("Error, scheduler type {} not supported.".format(scheduler_arg["type"]))
 
+    # LR warmup
+    if scheduler_arg["lr_warmup_steps"] > 0:
+        if have_warmup_scheduler:
+            scheduler = GradualWarmupScheduler(optimizer, multiplier=scheduler_arg["lr_warmup_factor"],
+                                               total_epoch=scheduler_arg["lr_warmup_steps"],
+                                               after_scheduler=scheduler_after)
+            
+        # Throw an error if the package is not found
+        else:
+            raise Exception(f'Requested {pargs.lr_warmup_steps} LR warmup steps '
+                            'but warmup scheduler not found. Install it from '
+                            'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
+    else:
+        scheduler = scheduler_after
 
-def get_optimizer(pargs, net):
+    return scheduler
+
+
+                     
+def get_optimizer(pargs, net, logger):
+    # these should be constant
+    defaults = {"adam_eps": 1e-6}
+    
     optimizer = None
     if pargs.optimizer == "Adam":
-        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = defaults["adam_eps"], weight_decay = pargs.weight_decay)
     elif pargs.optimizer == "AdamW":
-        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = defaults["adam_eps"], weight_decay = pargs.weight_decay)
     elif pargs.optimizer == "LAMB":
         if have_apex:
-            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
-            #from apex.contrib.optimizers.distributed_fused_lamb import DistributedFusedLAMB
-            #optimizer = DistributedFusedLAMB(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay)
+            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr,
+                                         eps = defaults["adam_eps"],
+                                         weight_decay = pargs.weight_decay,
+                                         set_grad_none = not pargs.enable_graph)
         else:
-            optimizer = uoptim.Lamb(net.parameters(), lr = pargs.start_lr, eps = pargs.adam_eps, weight_decay = pargs.weight_decay, clamp_value = torch.iinfo(torch.int32).max)
+            raise NotImplementedError("Error, optimizer LAMB requires APEX")
     else:
         raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
 
+    # log the optimizer parameters
+    logger.log_event(key = "optimizer_name", value = pargs.optimizer)
+    for idp, paramgroup in enumerate(optimizer.param_groups):
+        for key in [x for x in paramgroup.keys() if x != "params"]:
+            logger.log_event(key = "optimizer_group" + str(idp) + "_" + key, value = paramgroup[key])
+    
     return optimizer
