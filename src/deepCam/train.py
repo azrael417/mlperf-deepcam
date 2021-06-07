@@ -90,6 +90,8 @@ def main(pargs):
 
     # Logging hyperparameters
     logger.log_event(key = "global_batch_size", value = (pargs.local_batch_size * comm_size))
+    logger.log_event(key = "num_workers", value = comm_size)
+    logger.log_event(key = "batchnorm_group_size", value = pargs.batchnorm_group_size)
     logger.log_event(key = "checkpoint", value = pargs.checkpoint)
 
     # Define architecture
@@ -103,9 +105,10 @@ def main(pargs):
     net.to(device)
     
     #select loss
-    loss_pow = pargs.loss_weight_pow
     #some magic numbers
+    loss_pow = -0.125
     class_weights = [0.986267818390377**loss_pow, 0.0004578708870701058**loss_pow, 0.01327431072255291**loss_pow]
+    # extract loss
     criterion = losses.CELoss(class_weights).to(device)
     criterion = torch.jit.script(criterion)
 

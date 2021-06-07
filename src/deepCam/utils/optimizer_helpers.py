@@ -45,21 +45,21 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, logger, last_step = -1):
     for pgroup in optimizer.param_groups:
         pgroup["initial_lr"] = start_lr
 
-    # scheduler name
-    for key in scheduler_arg:
-        logger.log_event(key = "scheduler_" + key, value = scheduler_arg[key])
-
     # after-scheduler
     scheduler_after = None
     
     #now check
     if scheduler_arg["type"] == "multistep":
-        # set the parameters
+        # preprocess and set the parameters
         milestones = [ int(x) for x in scheduler_arg["milestones"].split() ]
         gamma = float(scheduler_arg["decay_rate"])
-
+        
         # create scheduler
         scheduler_after = optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma = gamma, last_epoch = last_step)
+
+        # save back the parameters for better logging
+        scheduler_arg["milestones"] = milestones
+        scheduler_arg["decay_rate"] = gamma
     
     elif scheduler_arg["type"] == "cosine_annealing":
         # set parameters
@@ -68,6 +68,10 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, logger, last_step = -1):
 
         # create scheduler
         scheduler_after =  optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = t_max, eta_min = eta_min)
+
+        # save back the parameters for better logging
+        scheduler_arg["t_max"] = t_max
+        scheduler_arg["eta_min"] = eta_min
     
     else:
         raise ValueError("Error, scheduler type {} not supported.".format(scheduler_arg["type"]))
@@ -86,6 +90,10 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, logger, last_step = -1):
                             'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
     else:
         scheduler = scheduler_after
+
+    # log scheduler data
+    for key in scheduler_arg:
+        logger.log_event(key = "scheduler_" + key, value = scheduler_arg[key])
 
     return scheduler
 
