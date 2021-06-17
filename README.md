@@ -34,6 +34,26 @@ available at https://github.com/ildoonet/pytorch-gradual-warmup-lr.
 
 Submission example scripts are in `src/deepCam/run_scripts`.
 
+## Hyperparameters
+
+The table below contains the modifiable hyperparameters. Unless otherwise stated, parameters not
+listed in the table below are fixed and changing those could lead to an invalid submission.
+
+|Parameter Name |Default | Allowed Range  | Description|
+--- | --- | --- | ---
+--optimizer | "Adam" | N/A, as long as it is an optimizer of ADAM-type or LAMB* | The optimizer to choose
+--start_lr | 0.001 | 1e-3 | >= 0. | Start learning rate (or base learning rate if warmup is used)
+--optimizer_betas | [0.9, 0.999] | N/A | Momentum terms for Adam-type optimizers
+--weight_decay | 1e-6 | >= 0. | L2 weight regularization term
+--lr_warmup_steps | 0 | >= 0 | Number of steps for learning rate warmup
+--lr_warmup_factor | 1. | >= 1. | When warmup is used, the target learning_rate will be lr_warmup_factor * start_lr
+--lr_schedule | |  |
+--target_iou | 0.82 | FIXED | The target validation IoU. This is listed as reminder but has to be kept at default value
+--batchnorm_group_size | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d
+with nn.SyncBatchNorm throughout the model. Curretly, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed.
+--seed | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
+
+
 ### Using Docker
 
 The implementation comes with a Dockerfile optimized for NVIDIA workstations but usable on 

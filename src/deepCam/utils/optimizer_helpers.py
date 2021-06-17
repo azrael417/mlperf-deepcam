@@ -105,12 +105,22 @@ def get_optimizer(pargs, net, logger):
     
     optimizer = None
     if pargs.optimizer == "Adam":
-        optimizer = optim.Adam(net.parameters(), lr = pargs.start_lr, eps = defaults["adam_eps"], weight_decay = pargs.weight_decay)
+        optimizer = optim.Adam(net.parameters(),
+                               lr = pargs.start_lr,
+                               betas = pargs.optimizer_betas,
+                               eps = defaults["adam_eps"],
+                               weight_decay = pargs.weight_decay)
     elif pargs.optimizer == "AdamW":
-        optimizer = optim.AdamW(net.parameters(), lr = pargs.start_lr, eps = defaults["adam_eps"], weight_decay = pargs.weight_decay)
+        optimizer = optim.AdamW(net.parameters(),
+                                lr = pargs.start_lr,
+                                betas = pargs.optimizer_betas,
+                                eps = defaults["adam_eps"],
+                                weight_decay = pargs.weight_decay)
     elif pargs.optimizer == "LAMB":
         if have_apex:
-            optimizer = aoptim.FusedLAMB(net.parameters(), lr = pargs.start_lr,
+            optimizer = aoptim.FusedLAMB(net.parameters(),
+                                         lr = pargs.start_lr,
+                                         betas = pargs.optimizer_betas,
                                          eps = defaults["adam_eps"],
                                          weight_decay = pargs.weight_decay,
                                          set_grad_none = True)
