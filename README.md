@@ -39,7 +39,7 @@ Submission example scripts are in `src/deepCam/run_scripts`.
 The table below contains the modifiable hyperparameters. Unless otherwise stated, parameters not
 listed in the table below are fixed and changing those could lead to an invalid submission.
 
-|Parameter Name |Default | Allowed Range  | Description|
+|Parameter Name |Default | Constraints | Description|
 --- | --- | --- | ---
 `--optimizer` | `"Adam"` | Optimizer of Adam or LAMB* type. This benchmark implements `"Adam"` and `"AdamW"` from PyTorch as well as `"FusedLAMB"` from NVIDIA APEX. Algorithmic equivalent implementations to those listed before are allowed. | The optimizer to choose
 `--start_lr` | 1e-3 | >= 0. | Start learning rate (or base learning rate if warmup is used)
