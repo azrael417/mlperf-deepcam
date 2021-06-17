@@ -48,8 +48,7 @@ listed in the table below are fixed and changing those could lead to an invalid 
 `--lr_warmup_steps` | 0 | >= 0 | Number of steps for learning rate warmup
 `--lr_warmup_factor` | 1. | >= 1. | When warmup is used, the target learning_rate will be lr_warmup_factor * start_lr
 `--lr_schedule` | - | `type="multistep",milestones="<milestone_list>",decay_rate="<value>"` | Specifies the learning rate schedule. Multistep decays the current learning rate by `decay_rate` at every milestone in the list. Note that the milestones are in unit of steps, not epochs. Number and value of milestones and the `decay_rate` can be chosen arbitrarily. For a milestone list, please specify it as whitespace separated values, for example `milestones="5000 10000"`
-`--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d
-with nn.SyncBatchNorm throughout the model. Curretly, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed.
+`--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d with nn.SyncBatchNorm everywhere in the model. Currently, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed
 `--seed` | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
 
 
