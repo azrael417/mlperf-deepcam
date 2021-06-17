@@ -41,7 +41,7 @@ listed in the table below are fixed and changing those could lead to an invalid 
 
 |Parameter Name |Default | Allowed Range  | Description|
 --- | --- | --- | ---
-`--optimizer` | `"Adam"` | Optimizer of ADAM or LAMB* type | The optimizer to choose
+`--optimizer` | `"Adam"` | Optimizer of ADAM or LAMB* type. This benchmark implements "Adam", "AdamW" from PyTorch and "FusedLAMB" from NVIDIA APEX. Algorithmic equivalent implementations to those listed before are allowed. | The optimizer to choose
 `--start_lr` | 1e-3 | >= 0. | Start learning rate (or base learning rate if warmup is used)
 `--optimizer_betas` | `[0.9, 0.999]` | N/A | Momentum terms for Adam-type optimizers
 `--weight_decay` | 1e-6 | >= 0. | L2 weight regularization term
@@ -51,7 +51,7 @@ listed in the table below are fixed and changing those could lead to an invalid 
 `--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d with nn.SyncBatchNorm everywhere in the model. Currently, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed
 `--seed` | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
 
-*LAMB optimizer has additional hyperparameters such as the global grad clipping norm value. For the purpose of this benchmark, consider all those parameters which are LAMB specific and fixed. The defaults are specified in the [NVIDIA apex documentation for FusedLAMB](https://nvidia.github.io/apex/_modules/apex/optimizers/fused_lamb.html)
+*LAMB optimizer has additional hyperparameters such as the global grad clipping norm value. For the purpose of this benchmark, consider all those parameters which are LAMB specific and fixed. The defaults are specified in the [NVIDIA APEX documentation for FusedLAMB](https://nvidia.github.io/apex/_modules/apex/optimizers/fused_lamb.html).
 
 ### Using Docker
 
