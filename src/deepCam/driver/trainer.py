@@ -40,6 +40,12 @@ def train_step(pargs, comm_rank, comm_size,
     # make sure net is set to train
     net.train()
 
+    # get LR
+    if pargs.lr_schedule:
+        current_lr = scheduler.get_last_lr()[0]
+    else:
+        current_lr = pargs.start_lr
+    
     # do the training loop
     for inputs, label, filename in train_loader:
     

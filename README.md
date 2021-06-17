@@ -51,6 +51,7 @@ listed in the table below are fixed and changing those could lead to an invalid 
 `--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d with nn.SyncBatchNorm everywhere in the model. Currently, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed
 `--seed` | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
 
+*LAMB optimizer has additional hyperparameters such as the global grad clipping norm value. For the purpose of this benchmark, consider all those parameters which are LAMB specific and fixed. The defaults are specified in the [NVIDIA apex documentation for FusedLAMB](https://nvidia.github.io/apex/_modules/apex/optimizers/fused_lamb.html)
 
 ### Using Docker
 
