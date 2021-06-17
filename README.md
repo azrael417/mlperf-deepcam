@@ -41,14 +41,13 @@ listed in the table below are fixed and changing those could lead to an invalid 
 
 |Parameter Name |Default | Allowed Range  | Description|
 --- | --- | --- | ---
-`--optimizer` | `"Adam"` | Free, as long as it is an optimizer of ADAM-type or LAMB* | The optimizer to choose
+`--optimizer` | `"Adam"` | Optimizer of ADAM or LAMB* type | The optimizer to choose
 `--start_lr` | 1e-3 | >= 0. | Start learning rate (or base learning rate if warmup is used)
-`--optimizer_betas` | [0.9, 0.999] | N/A | Momentum terms for Adam-type optimizers
+`--optimizer_betas` | `[0.9, 0.999]` | N/A | Momentum terms for Adam-type optimizers
 `--weight_decay` | 1e-6 | >= 0. | L2 weight regularization term
 `--lr_warmup_steps` | 0 | >= 0 | Number of steps for learning rate warmup
 `--lr_warmup_factor` | 1. | >= 1. | When warmup is used, the target learning_rate will be lr_warmup_factor * start_lr
-`--lr_schedule` | | Specifies the learning rate schedule
-`--target_iou` | 0.82 | FIXED | The target validation IoU. This is listed as reminder but **has to be kept at default value**
+`--lr_schedule` | - | `type="multistep",milestones="<milestone_list>",decay_rate="<value>"` | Specifies the learning rate schedule. Multistep decays the current learning rate by `decay_rate` at every milestone in the list. Note that the milestones are in unit of steps, not epochs. Number and value of milestones and the `decay_rate` can be chosen arbitrarily. For a milestone list, please specify it as whitespace separated values, for example `milestones="5000 10000"`
 `--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d
 with nn.SyncBatchNorm throughout the model. Curretly, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed.
 `--seed` | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
