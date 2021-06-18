@@ -65,17 +65,17 @@ Note that the command line arguments do not directly correspond to logging entri
 `gradient_accumulation_frequency` | >= 1 | True
 `optimizer_name` | one of `["Adam", "AdamW", "LAMB"]` | True
 `optimizer_group0_lr` | >= 0. | True
-`optimizer_group0_bias_correction` | True | True if `optimizer_name` == `LAMB` else False
 `optimizer_group0_betas` | unconstrained | True
 `optimizer_group0_eps` | 1e-6 | True
 `optimizer_group0_weight_decay` | >= 0. | True
-`optimizer_group0_grad_averaging` | True | True if `optimizer_name` == `LAMB` else False
-`optimizer_group0_max_grad_norm` | 1.0 | True if `optimizer_name` == `LAMB` else False
+`optimizer_group0_bias_correction` | True | True if `optimizer_name` == `"LAMB"` else False
+`optimizer_group0_grad_averaging` | True | True if `optimizer_name` == `"LAMB"` else False
+`optimizer_group0_max_grad_norm` | 1.0 | True if `optimizer_name` == `"LAMB"` else False
 `scheduler_type` | one of `["multistep", "cosine_annealing"]` | True
-`scheduler_milestones` | unconstrained | True if `scheduler_type` == `multistep` else False
-`scheduler_decay_rate` | >= 1. | True if `scheduler_type` == `multistep` else False
-`scheduler_t_max` | >= 0 | True if `scheduler_type` == `cosine_annealing` else False
-`scheduler_eta_min` | >= 0. | True if `scheduler_type` == `cosine_annealing` else False
+`scheduler_milestones` | unconstrained | True if `scheduler_type` == `"multistep"` else False
+`scheduler_decay_rate` | >= 1. | True if `scheduler_type` == `"multistep"` else False
+`scheduler_t_max` | >= 0 | True if `scheduler_type` == `"cosine_annealing"` else False
+`scheduler_eta_min` | >= 0. | True if `scheduler_type` == `"cosine_annealing"` else False
 `scheduler_lr_warmup_steps` | >= 0 | False
 `scheduler_lr_warmup_factor` | >= 1. | True if `scheduler_lr_warmup_steps` > 0 else False
 
