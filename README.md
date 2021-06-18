@@ -72,8 +72,8 @@ Note that the command line arguments do not directly correspond to logging entri
 `optimizer_group0_grad_averaging` | `x == True` | `True if optimizer_name == "LAMB" else False`
 `optimizer_group0_max_grad_norm` | `x == 1.0` | `True if optimizer_name == "LAMB" else False`
 `scheduler_type` | `x in ["multistep", "cosine_annealing"]` | `True`
-`scheduler_milestones` | unconstrained | `True if scheduler_type == "multistep"` else False`
-`scheduler_decay_rate` | `x >= 1.` | `True if scheduler_type` == "multistep" else False`
+`scheduler_milestones` | unconstrained | `True if scheduler_type == "multistep" else False`
+`scheduler_decay_rate` | `x >= 1.` | `True if scheduler_type == "multistep" else False`
 `scheduler_t_max` | `x >= 0` | `True if scheduler_type == "cosine_annealing" else False`
 `scheduler_eta_min` | `x >= 0.` | `True if scheduler_type == "cosine_annealing" else False`
 `scheduler_lr_warmup_steps` | `x >= 0` | `False`
