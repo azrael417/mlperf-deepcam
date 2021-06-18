@@ -79,7 +79,7 @@ Note that the command line arguments do not directly correspond to logging entri
 `scheduler_lr_warmup_steps` | `x >= 0` | `False`
 `scheduler_lr_warmup_factor` | `x >= 1.` | `True if scheduler_lr_warmup_steps > 0 else False`
 
-The first column lists the keys as they would appear in the logfile. The second column lists the parameters constraints as an equation for parameter variable x. The third one if the corresponding entry has to be in the log file or not. Since there are multiple optimizers and learning rate schedules to choose from, not all parameters need to be logged for a given run. This is expressed by conditional expressions in that column.
+The first column lists the keys as they would appear in the logfile. The second column lists the parameters constraints as an equation for parameter variable x. Those can be used to generate lambda expressions in Python. The third one if the corresponding entry has to be in the log file or not. Since there are multiple optimizers and learning rate schedules to choose from, not all parameters need to be logged for a given run. This is expressed by conditional expressions in that column.
 
 ### Using Docker
 
