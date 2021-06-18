@@ -47,11 +47,38 @@ listed in the table below are fixed and changing those could lead to an invalid 
 `--weight_decay` | 1e-6 | >= 0. | L2 weight regularization term
 `--lr_warmup_steps` | 0 | >= 0 | Number of steps for learning rate warmup
 `--lr_warmup_factor` | 1. | >= 1. | When warmup is used, the target learning_rate will be lr_warmup_factor * start_lr
-`--lr_schedule` | - | `type="multistep",milestones="<milestone_list>",decay_rate="<value>"` or `type="cosine_annealing",t_max="<value>",eta_min="<value>"` | Specifies the learning rate schedule. - Multistep decays the current learning rate by `decay_rate` at every milestone in the list. Note that the milestones are in unit of steps, not epochs. Number and value of milestones and the `decay_rate` can be chosen arbitrarily. For a milestone list, please specify it as whitespace separated values, for example `milestones="5000 10000"`. - For cosine annealing, the minimal lr is given by the value of `eta_min` and the period length in number of steps by `T_max`
+`--lr_schedule` | - | `type="multistep",milestones="<milestone_list>",decay_rate="<value>"` or `type="cosine_annealing",t_max="<value>",eta_min="<value>"` | Specifies the learning rate schedule. Multistep decays the current learning rate by `decay_rate` at every milestone in the list. Note that the milestones are in unit of steps, not epochs. Number and value of milestones and the `decay_rate` can be chosen arbitrarily. For a milestone list, please specify it as whitespace separated values, for example `milestones="5000 10000"`. For cosine annealing, the minimal lr is given by the value of `eta_min` and the period length in number of steps by `T_max`
 `--batchnorm_group_size` | 1 | >= 1 | Determines how many ranks participate in the batchnorm. Specifying a value > 1 will replace nn.BatchNorm2d with nn.SyncBatchNorm everywhere in the model. Currently, nn.SyncBatchNorm only supports node-local batch normalization, but using an Implementation of that same functionality which span arbitrary number of workers is allowed
-`--seed` | 333 | Arbitrary but varying | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
+`--gradient_accumulation_frequency` | 1 | >= 1 | Specifies the number of gradient accumulation steps before a weight update is performed
+`--seed` | 333 | > 0 | Random number generator seed. Multiple submissions which employ the same seed are discouraged. Please specify a seed depending on system clock or similar.
 
 *LAMB optimizer has additional hyperparameters such as the global grad clipping norm value. For the purpose of this benchmark, consider all those parameters which are LAMB specific and fixed. The defaults are specified in the [NVIDIA APEX documentation for FusedLAMB](https://nvidia.github.io/apex/_modules/apex/optimizers/fused_lamb.html).
+
+Note that the command line arguments do not directly correspond to logging entries. For compliance checking of oiutput logs, use the table below:
+
+|Key| Constraints | Optional |
+--- | --- | ---
+`seed` | > 0 | False
+`global_batch_size` | > 0 | False
+`num_workers` | > 0 | False
+`batchnorm_group_size` | > 1 | False
+`gradient_accumulation_frequency` | >= 1 | False
+`optimizer_name` | one of ["Adam", "AdamW", "LAMB"] | False
+`optimizer_group0_lr` | >= 0. | False
+`optimizer_group0_bias_correction` | True | False if `optimizer_name` == `LAMB` else True 
+`optimizer_group0_betas` | unconstrained | False
+`optimizer_group0_eps` | 1e-6 | False
+`optimizer_group0_weight_decay` | >= 0. | False
+`optimizer_group0_grad_averaging` | True | False if `optimizer_name` == `LAMB` else True
+`optimizer_group0_max_grad_norm` | 1.0 | False if `optimizer_name` == `LAMB` else True
+`scheduler_type` | one of ["multistep", "cosine_annealing"] | False
+`scheduler_milestones` | unconstrained | False if `scheduler_type` == `multistep` else True
+`scheduler_decay_rate` | >= 1. | False if `scheduler_type` == `multistep` else True
+`scheduler_t_max` | >= 0 | False if `scheduler_type` == `cosine_annealing` else True
+`scheduler_eta_min` | >= 0. | False if `scheduler_type` == `cosine_annealing` else True 
+`scheduler_lr_warmup_steps` | >= 0 | True
+`scheduler_lr_warmup_factor` | >= 1. | True
+
 
 ### Using Docker
 
