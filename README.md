@@ -67,7 +67,7 @@ Note that the command line arguments do not directly correspond to logging entri
 `optimizer_group0_lr` | `x >= 0.` | `True`
 `optimizer_group0_betas` | unconstrained | `True`
 `optimizer_group0_eps` | `x == 1e-6` | `True`
-`optimizer_group0_weight_decay` | >= 0. | `True`
+`optimizer_group0_weight_decay` | `x >= 0.` | `True`
 `optimizer_group0_bias_correction` | `x == True` | `True if optimizer_name == "LAMB" else False`
 `optimizer_group0_grad_averaging` | `x == True` | `True if optimizer_name == "LAMB" else False`
 `optimizer_group0_max_grad_norm` | `x == 1.0` | `True if optimizer_name == "LAMB" else False`
