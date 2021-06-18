@@ -58,28 +58,28 @@ Note that the command line arguments do not directly correspond to logging entri
 
 |Key| Constraints | Required |
 --- | --- | ---
-`seed` | > 0 | True
-`global_batch_size` | > 0 | True
-`num_workers` | > 0 | True
-`batchnorm_group_size` | > 1 | False
-`gradient_accumulation_frequency` | >= 1 | True
-`optimizer_name` | one of `["Adam", "AdamW", "LAMB"]` | True
-`optimizer_group0_lr` | >= 0. | True
-`optimizer_group0_betas` | unconstrained | True
-`optimizer_group0_eps` | 1e-6 | True
-`optimizer_group0_weight_decay` | >= 0. | True
-`optimizer_group0_bias_correction` | True | True if `optimizer_name` == `"LAMB"` else False
-`optimizer_group0_grad_averaging` | True | True if `optimizer_name` == `"LAMB"` else False
-`optimizer_group0_max_grad_norm` | 1.0 | True if `optimizer_name` == `"LAMB"` else False
-`scheduler_type` | one of `["multistep", "cosine_annealing"]` | True
-`scheduler_milestones` | unconstrained | True if `scheduler_type` == `"multistep"` else False
-`scheduler_decay_rate` | >= 1. | True if `scheduler_type` == `"multistep"` else False
-`scheduler_t_max` | >= 0 | True if `scheduler_type` == `"cosine_annealing"` else False
-`scheduler_eta_min` | >= 0. | True if `scheduler_type` == `"cosine_annealing"` else False
-`scheduler_lr_warmup_steps` | >= 0 | False
-`scheduler_lr_warmup_factor` | >= 1. | True if `scheduler_lr_warmup_steps` > 0 else False
+`seed` | `x > 0` | True
+`global_batch_size` | `x > 0` | `True`
+`num_workers` | `x > 0` | `True`
+`batchnorm_group_size` | `x > 1` | `False`
+`gradient_accumulation_frequency` | `x >= 1` | `True`
+`optimizer_name` | `x in ["Adam", "AdamW", "LAMB"]` | `True`
+`optimizer_group0_lr` | `x >= 0.` | `True`
+`optimizer_group0_betas` | unconstrained | `True`
+`optimizer_group0_eps` | `x == 1e-6` | `True`
+`optimizer_group0_weight_decay` | >= 0. | `True1
+`optimizer_group0_bias_correction` | `x == True` | `True if optimizer_name == "LAMB" else False`
+`optimizer_group0_grad_averaging` | `x == True` | `True if optimizer_name == "LAMB" else False`
+`optimizer_group0_max_grad_norm` | `x == 1.0` | `True if optimizer_name == "LAMB" else False`
+`scheduler_type` | `x in ["multistep", "cosine_annealing"]` | `True`
+`scheduler_milestones` | unconstrained | `True if scheduler_type == "multistep"` else False`
+`scheduler_decay_rate` | `x >= 1.` | `True if scheduler_type` == "multistep" else False`
+`scheduler_t_max` | `x >= 0` | `True if scheduler_type == "cosine_annealing" else False`
+`scheduler_eta_min` | `x >= 0.` | `True if scheduler_type == "cosine_annealing" else False`
+`scheduler_lr_warmup_steps` | `x >= 0` | `False`
+`scheduler_lr_warmup_factor` | `x >= 1.` | `True if scheduler_lr_warmup_steps > 0 else False`
 
-The first column lists the keys as they would appear in the logfile, the second column lists the parameters constraints and the third one if the corresponding entry has to be in the log file or not. Since there are multiple optimizers and learning rate schedules to choose from, not all parameters need to be logged for a given run. This is expressed by conditional expressions in that column.
+The first column lists the keys as they would appear in the logfile. The second column lists the parameters constraints as an equation for parameter variable x. The third one if the corresponding entry has to be in the log file or not. Since there are multiple optimizers and learning rate schedules to choose from, not all parameters need to be logged for a given run. This is expressed by conditional expressions in that column.
 
 ### Using Docker
 
