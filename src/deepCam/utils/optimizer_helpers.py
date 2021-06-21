@@ -130,9 +130,9 @@ def get_optimizer(pargs, net, logger):
         raise NotImplementedError("Error, optimizer {} not supported".format(pargs.optimizer))
 
     # log the optimizer parameters
-    logger.log_event(key = "optimizer_name", value = pargs.optimizer)
-    for idp, paramgroup in enumerate(optimizer.param_groups):
-        for key in [x for x in paramgroup.keys() if x != "params"]:
-            logger.log_event(key = "optimizer_group" + str(idp) + "_" + key, value = paramgroup[key])
+    logger.log_event(key = "opt_name", value = pargs.optimizer)
+    paramgroup = optimizer.param_groups[0]
+    for key in [x for x in paramgroup if x != "params"]:
+        logger.log_event(key = "opt_" + key, value = paramgroup[key])
     
     return optimizer
