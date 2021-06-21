@@ -63,14 +63,14 @@ Note that the command line arguments do not directly correspond to logging entri
 `num_workers` | `x > 0` | `True`
 `batchnorm_group_size` | `x > 1` | `False`
 `gradient_accumulation_frequency` | `x >= 1` | `True`
-`optimizer_name` | `x in ["Adam", "AdamW", "LAMB"]` | `True`
-`optimizer_group0_lr` | `x >= 0.` | `True`
-`optimizer_group0_betas` | unconstrained | `True`
-`optimizer_group0_eps` | `x == 1e-6` | `True`
-`optimizer_group0_weight_decay` | `x >= 0.` | `True`
-`optimizer_group0_bias_correction` | `x == True` | `True if optimizer_name == "LAMB" else False`
-`optimizer_group0_grad_averaging` | `x == True` | `True if optimizer_name == "LAMB" else False`
-`optimizer_group0_max_grad_norm` | `x == 1.0` | `True if optimizer_name == "LAMB" else False`
+`opt_name` | `x in ["Adam", "AdamW", "LAMB"]` | `True`
+`opt_lr` | `x >= 0.` | `True`
+`opt_betas` | unconstrained | `True`
+`opt_eps` | `x == 1e-6` | `True`
+`opt_weight_decay` | `x >= 0.` | `True`
+`opt_bias_correction` | `x == True` | `True if opt_name == "LAMB" else False`
+`opt_grad_averaging` | `x == True` | `True if opt_name == "LAMB" else False`
+`opt_max_grad_norm` | `x == 1.0` | `True if opt_name == "LAMB" else False`
 `scheduler_type` | `x in ["multistep", "cosine_annealing"]` | `True`
 `scheduler_milestones` | unconstrained | `True if scheduler_type == "multistep" else False`
 `scheduler_decay_rate` | `x >= 1.` | `True if scheduler_type == "multistep" else False`
