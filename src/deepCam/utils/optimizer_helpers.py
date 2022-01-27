@@ -85,7 +85,7 @@ def get_lr_schedule(start_lr, scheduler_arg, optimizer, logger, last_step = -1):
             
         # Throw an error if the package is not found
         else:
-            raise Exception(f'Requested {pargs.lr_warmup_steps} LR warmup steps '
+            raise Exception(f'Requested {scheduler_arg["lr_warmup_steps"]} LR warmup steps '
                             'but warmup scheduler not found. Install it from '
                             'https://github.com/ildoonet/pytorch-gradual-warmup-lr')
     else:
