@@ -1,3 +1,5 @@
+### NOTE: this implementation is outdated. The most recent published one can be found on the [MLCommons repo](https://github.com/mlcommons/hpc_results_v3.0/tree/main/NVIDIA/benchmarks/deepcam/implementations/pytorch). 
+
 # Deep Learning Climate Segmentation Benchmark
 
 PyTorch implementation for the climate segmentation benchmark, based on the
