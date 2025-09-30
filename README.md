@@ -1,4 +1,4 @@
-### NOTE: this implementation is outdated. The most recent published version of the DeepCAM benchmark can be found on the [MLCommons repo](https://github.com/mlcommons/hpc_results_v3.0/tree/main/NVIDIA/benchmarks/deepcam/implementations/pytorch). An unoptimized reference version is also found there, see [this link](https://github.com/mlcommons/hpc/tree/main/deepcam). This implementation also contains parameters sets for good convergence for a variety of batch sizes.
+### NOTE: this implementation is outdated. The most recent published version of the DeepCAM benchmark can be found on the [MLCommons repo](https://github.com/mlcommons/hpc_results_v3.0/tree/main/NVIDIA/benchmarks/deepcam/implementations/pytorch). An unoptimized reference version is also found there, see [this link](https://github.com/mlcommons/hpc/tree/main/deepcam). This implementation also [contains parameters sets](https://github.com/mlcommons/hpc/blob/main/deepcam/compliance/1.0.0/rcps_deepcam.json) which show good training convergence for a variety of batch sizes.
 
 # Deep Learning Climate Segmentation Benchmark
 
